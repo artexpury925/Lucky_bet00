@@ -20,10 +20,12 @@ import { LiveBetsTable } from './components/aviator/LiveBetsTable';
 import { SportsBetting } from './components/sports/SportsBetting';
 import { BetSlip } from './components/sports/BetSlip';
 import { AuthModals } from './components/auth/AuthModals';
+import { AuthGateway } from './components/auth/AuthGateway';
 import { CashierModal } from './components/cashier/CashierModal';
 import { AdminPanel } from './components/admin/AdminPanel';
 import { soundEngine } from './utils/soundEngine';
 import { generateCrashPoint, sha256, getCurrentHourMood, getMoodDetails } from './utils/provablyFair';
+import { realtimeClient } from './utils/realtimeClient';
 import confetti from 'canvas-confetti';
 import {
   Flame,
@@ -32,6 +34,7 @@ import {
   Palette,
   Wallet,
   Shield,
+  ShieldCheck,
   Trophy,
   Plane,
   Radio,
@@ -42,6 +45,7 @@ import {
   Lock,
   ArrowUpRight,
   ArrowDownLeft,
+  LogOut,
 } from 'lucide-react';
 
 // Default initial matches
@@ -168,6 +172,14 @@ export default function App() {
   const [theme, setTheme] = useState<AviatorTheme>('classic-red');
   const [isMuted, setIsMuted] = useState<boolean>(false);
 
+  // Persistent Auth State with Remember Me Support
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    const remember = localStorage.getItem('lucky_bet_remember_me') === 'true';
+    const localToken = localStorage.getItem('lucky_bet_auth_token');
+    const sessionToken = sessionStorage.getItem('lucky_bet_auth_token');
+    return (remember && !!localToken) || !!sessionToken;
+  });
+
   // User & Wallet State
   const [user, setUser] = useState<UserAccount>(() => {
     const saved = localStorage.getItem('lucky_bet_active_user');
@@ -186,6 +198,22 @@ export default function App() {
       totalWithdrawnDemo: 0,
     };
   });
+
+  const handleAuthSuccess = (account: UserAccount, rememberMe: boolean) => {
+    setUser(account);
+    setIsAuthenticated(true);
+    setIsAuthOpen(false);
+    // Realtime broadcast to server so admin panel on other devices sees the new user immediately
+    realtimeClient.syncUserToServer(account);
+  };
+
+  const handleLogout = () => {
+    soundEngine.playClick();
+    localStorage.removeItem('lucky_bet_auth_token');
+    sessionStorage.removeItem('lucky_bet_auth_token');
+    localStorage.setItem('lucky_bet_remember_me', 'false');
+    setIsAuthenticated(false);
+  };
 
   const [transactions, setTransactions] = useState<WalletTransaction[]>([
     {
@@ -389,6 +417,93 @@ export default function App() {
     });
   }, [user]);
 
+  // Real-time server sync function
+  const refreshLiveStatus = async () => {
+    const status = await realtimeClient.fetchLiveStatus();
+    if (!status) return;
+    if (Array.isArray(status.users) && status.users.length > 0) {
+      setRegisteredUsers(status.users);
+    }
+    if (Array.isArray(status.pendingDeposits)) {
+      setPendingDeposits(status.pendingDeposits);
+    }
+  };
+
+  // Real-time synchronization across all devices and clients
+  useEffect(() => {
+    let isMounted = true;
+
+    const syncInitialState = async () => {
+      const status = await realtimeClient.fetchLiveStatus();
+      if (!isMounted || !status) return;
+      if (Array.isArray(status.users) && status.users.length > 0) {
+        setRegisteredUsers(status.users);
+      }
+      if (Array.isArray(status.pendingDeposits)) {
+        setPendingDeposits(status.pendingDeposits);
+      }
+    };
+
+    syncInitialState();
+
+    // Subscribe to real-time server-sent events (SSE)
+    const unsubscribe = realtimeClient.subscribeToEvents(event => {
+      if (!isMounted) return;
+
+      if (Array.isArray(event.users) && event.users.length > 0) {
+        setRegisteredUsers(event.users);
+      }
+
+      if (Array.isArray(event.pendingDeposits)) {
+        setPendingDeposits(event.pendingDeposits);
+      }
+
+      if (event.type === 'USER_REGISTERED' || event.type === 'USER_UPDATED') {
+        if (event.data?.user) {
+          const u = event.data.user;
+          setRegisteredUsers(prev => {
+            const idx = prev.findIndex(item => item.phoneNumber === u.phoneNumber);
+            if (idx >= 0) {
+              const updated = [...prev];
+              updated[idx] = { ...updated[idx], ...u };
+              return updated;
+            }
+            return [u, ...prev];
+          });
+
+          // Sync current active user if updated by admin or another session
+          setUser(curr => {
+            if (curr.phoneNumber === u.phoneNumber) {
+              return { ...curr, ...u };
+            }
+            return curr;
+          });
+        }
+      }
+
+      if (event.type === 'DEPOSIT_APPROVED' && event.data?.updatedUser) {
+        const u = event.data.updatedUser;
+        setUser(curr => {
+          if (curr.phoneNumber === u.phoneNumber) {
+            return { ...curr, balance: u.balance, totalDepositedDemo: u.totalDepositedDemo };
+          }
+          return curr;
+        });
+      }
+    });
+
+    // Continual short polling every 3 seconds to guarantee updates across devices
+    const pollInterval = setInterval(() => {
+      syncInitialState();
+    }, 3000);
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+      clearInterval(pollInterval);
+    };
+  }, []);
+
   // Audio mute sync
   useEffect(() => {
     soundEngine.setMuted(isMuted);
@@ -449,6 +564,9 @@ export default function App() {
     };
     setPendingDeposits(prev => [newDep, ...prev]);
 
+    // Sync deposit to server so admin sees it in verification queue on any device
+    realtimeClient.submitDeposit(newDep);
+
     recordTransaction(
       'PENDING_DEPOSIT',
       amount,
@@ -464,6 +582,9 @@ export default function App() {
 
     soundEngine.playCashout();
     setPendingDeposits(prev => prev.filter(d => d.id !== id));
+
+    // Sync approval to server
+    realtimeClient.approveDeposit(id);
 
     if (deposit.phoneNumber === user.phoneNumber) {
       setUser(prev => {
@@ -499,10 +620,13 @@ export default function App() {
   const handleRejectDeposit = (id: string) => {
     soundEngine.playClick();
     setPendingDeposits(prev => prev.filter(d => d.id !== id));
+    realtimeClient.rejectDeposit(id);
   };
 
   // Admin directly credits funds to any user
   const handleAdminAddFundsToUser = (phone: string, amount: number) => {
+    realtimeClient.adminCreditUser(phone, amount);
+
     if (phone === user.phoneNumber) {
       setUser(prev => {
         const newBal = prev.balance + amount;
@@ -963,6 +1087,42 @@ export default function App() {
     setTransactions([]);
   };
 
+  // Dedicated Gateway: Show Sign In / Sign Up first before entering the app
+  if (!isAuthenticated) {
+    return (
+      <>
+        <AuthGateway
+          onSuccess={handleAuthSuccess}
+          onOpenAdmin={() => setIsAdminOpen(true)}
+        />
+        <AdminPanel
+          isOpen={isAdminOpen}
+          onClose={() => setIsAdminOpen(false)}
+          registeredUsers={registeredUsers}
+          pendingDeposits={pendingDeposits}
+          onApproveDeposit={handleApproveDeposit}
+          onRejectDeposit={handleRejectDeposit}
+          onAdminAddFundsToUser={handleAdminAddFundsToUser}
+          rtpRate={rtpRate}
+          onUpdateRtp={rate => setRtpRate(rate)}
+          onTriggerSpecialFlight={handleTriggerSpecialFlight}
+          onResetBalances={handleResetBalances}
+          hourlyMood={hourlyMood}
+          onSetMood={mood => {
+            setIsAutoMood(false);
+            setHourlyMood(mood);
+          }}
+          isAutoMood={isAutoMood}
+          onToggleAutoMood={auto => {
+            setIsAutoMood(auto);
+            if (auto) setHourlyMood(getCurrentHourMood());
+          }}
+          onRefresh={refreshLiveStatus}
+        />
+      </>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#0b0e14] text-slate-100 flex flex-col font-sans selection:bg-amber-500 selection:text-black">
       {/* TOP NAVIGATION BAR */}
@@ -1096,7 +1256,21 @@ export default function App() {
               <span>WITHDRAW</span>
             </button>
 
-            {/* User Profile / Auth */}
+            {/* Admin Portal Quick Button */}
+            <button
+              type="button"
+              onClick={() => {
+                soundEngine.playClick();
+                setIsAdminOpen(true);
+              }}
+              title="Open Admin Management Panel (KENYA@254)"
+              className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-amber-500/40 text-amber-400 transition-colors cursor-pointer flex items-center space-x-1 text-xs"
+            >
+              <ShieldCheck className="w-4 h-4 text-amber-400" />
+              <span className="hidden xl:inline font-bold font-mono text-[11px]">Admin</span>
+            </button>
+
+            {/* User Profile / Switch Account */}
             <button
               type="button"
               onClick={() => {
@@ -1104,10 +1278,22 @@ export default function App() {
                 setAuthInitialMode('login');
                 setIsAuthOpen(true);
               }}
-              className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white transition-colors cursor-pointer flex items-center space-x-1 text-xs"
+              title={`Logged in as ${user.username} (${user.phoneNumber})`}
+              className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white transition-colors cursor-pointer flex items-center space-x-1.5 text-xs"
             >
               <User className="w-4 h-4 text-amber-400" />
               <span className="hidden lg:inline font-bold font-display">{user.username}</span>
+            </button>
+
+            {/* Log Out Button */}
+            <button
+              type="button"
+              onClick={handleLogout}
+              title="Log Out of Lucky Bet"
+              className="p-2 rounded-xl bg-slate-900 hover:bg-red-950/60 border border-slate-800 hover:border-red-500/40 text-slate-400 hover:text-red-400 transition-colors cursor-pointer flex items-center space-x-1 text-xs"
+            >
+              <LogOut className="w-4 h-4" />
+              <span className="hidden sm:inline font-semibold text-[11px]">Logout</span>
             </button>
           </div>
         </div>
@@ -1300,7 +1486,7 @@ export default function App() {
         isOpen={isAuthOpen}
         initialMode={authInitialMode}
         onClose={() => setIsAuthOpen(false)}
-        onSuccess={newAccount => setUser(newAccount)}
+        onSuccess={handleAuthSuccess}
       />
 
       {/* 2. Cashier Modal */}
@@ -1338,6 +1524,7 @@ export default function App() {
           setIsAutoMood(auto);
           if (auto) setHourlyMood(getCurrentHourMood());
         }}
+        onRefresh={refreshLiveStatus}
       />
 
       {/* 4. How To Play & Rules Modal */}

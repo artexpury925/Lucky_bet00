@@ -13,6 +13,7 @@ import {
   Clock,
   Search,
   Sparkles,
+  RefreshCw,
 } from 'lucide-react';
 import { AviatorHourlyMood, UserAccount, PendingDeposit } from '../../types';
 
@@ -32,6 +33,7 @@ interface AdminPanelProps {
   onSetMood: (mood: AviatorHourlyMood) => void;
   isAutoMood: boolean;
   onToggleAutoMood: (auto: boolean) => void;
+  onRefresh?: () => void;
 }
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({
@@ -50,6 +52,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onSetMood,
   isAutoMood,
   onToggleAutoMood,
+  onRefresh,
 }) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [username, setUsername] = useState<string>('KENYA@254');
@@ -176,17 +179,37 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <span className="font-display font-bold text-white text-base">
                   Lucky Bet Platform Dashboard
                 </span>
+                <span className="flex items-center space-x-1.5 text-[10px] font-bold text-emerald-400 bg-emerald-950/60 border border-emerald-500/40 px-2 py-0.5 rounded-full">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+                  <span>Live Sync ON</span>
+                </span>
                 <span className="text-[10px] bg-slate-800 text-amber-400 px-2 py-0.5 rounded font-mono font-bold">
                   KENYA@254
                 </span>
               </div>
-              <button
-                onClick={() => setIsAuthenticated(false)}
-                className="text-xs text-slate-400 hover:text-red-400 flex items-center space-x-1"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-                <span>Logout</span>
-              </button>
+              <div className="flex items-center space-x-2">
+                {onRefresh && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playClick();
+                      onRefresh();
+                    }}
+                    title="Refresh data from server"
+                    className="p-1.5 rounded-lg bg-slate-900 border border-slate-700 hover:bg-slate-800 text-slate-300 hover:text-white transition-colors cursor-pointer flex items-center space-x-1 text-xs"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="hidden sm:inline text-[11px] text-emerald-400 font-bold">Refresh</span>
+                  </button>
+                )}
+                <button
+                  onClick={() => setIsAuthenticated(false)}
+                  className="text-xs text-slate-400 hover:text-red-400 flex items-center space-x-1 p-1.5 rounded-lg bg-slate-900 hover:bg-red-950/40 border border-slate-800 transition-colors cursor-pointer"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Logout</span>
+                </button>
+              </div>
             </div>
 
             {/* Dashboard Sub-navigation Tabs */}
@@ -327,6 +350,19 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     </div>
                   </div>
 
+                  {/* Real-time Notice Banner */}
+                  <div className="bg-emerald-950/40 border border-emerald-500/30 rounded-xl p-2.5 flex items-center justify-between text-xs text-emerald-300">
+                    <div className="flex items-center space-x-2">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
+                      <span>
+                        <strong>Real-time updates active:</strong> Users who create accounts or log in on other phones or PCs will appear here instantly!
+                      </span>
+                    </div>
+                    <span className="hidden sm:inline font-mono text-[10px] text-emerald-400/80 bg-emerald-900/40 px-2 py-0.5 rounded">
+                      Live sync
+                    </span>
+                  </div>
+
                   {/* Add Funds Modal Form if user selected */}
                   {selectedUserPhone && (
                     <form
@@ -393,34 +429,42 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       <span className="col-span-2 text-right">Actions</span>
                     </div>
 
-                    {filteredUsers.map(u => (
-                      <div
-                        key={u.phoneNumber}
-                        className="grid grid-cols-12 px-3 py-2.5 items-center hover:bg-slate-900/60 transition-colors text-xs"
-                      >
-                        <div className="col-span-4 font-bold text-white truncate">
-                          {u.username}
+                    {filteredUsers.map(u => {
+                      const isRecent = u.joinedAt && Date.now() - u.joinedAt < 60 * 60 * 1000;
+                      return (
+                        <div
+                          key={u.phoneNumber}
+                          className="grid grid-cols-12 px-3 py-2.5 items-center hover:bg-slate-900/60 transition-colors text-xs"
+                        >
+                          <div className="col-span-4 font-bold text-white truncate flex items-center space-x-1.5">
+                            <span className="truncate">{u.username}</span>
+                            {isRecent && (
+                              <span className="px-1.5 py-0.2 text-[9px] font-black uppercase bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 rounded shrink-0">
+                                NEW
+                              </span>
+                            )}
+                          </div>
+                          <div className="col-span-3 font-mono text-slate-400 text-[11px] truncate">
+                            {u.phoneNumber}
+                          </div>
+                          <div className="col-span-3 text-right font-display font-extrabold text-emerald-400">
+                            {u.balance.toFixed(2)} KES
+                          </div>
+                          <div className="col-span-2 text-right">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedUserPhone(u.phoneNumber);
+                                setAddFundsAmount(500);
+                              }}
+                              className="px-2 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded text-[11px] font-bold font-display cursor-pointer"
+                            >
+                              + Add Funds
+                            </button>
+                          </div>
                         </div>
-                        <div className="col-span-3 font-mono text-slate-400 text-[11px]">
-                          {u.phoneNumber}
-                        </div>
-                        <div className="col-span-3 text-right font-display font-extrabold text-emerald-400">
-                          {u.balance.toFixed(2)} KES
-                        </div>
-                        <div className="col-span-2 text-right">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedUserPhone(u.phoneNumber);
-                              setAddFundsAmount(500);
-                            }}
-                            className="px-2 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded text-[11px] font-bold font-display cursor-pointer"
-                          >
-                            + Add Funds
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}

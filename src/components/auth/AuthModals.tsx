@@ -7,7 +7,7 @@ interface AuthModalsProps {
   isOpen: boolean;
   initialMode: 'login' | 'register' | 'forgot';
   onClose: () => void;
-  onSuccess: (account: UserAccount) => void;
+  onSuccess: (account: UserAccount, rememberMe: boolean) => void;
 }
 
 export const AuthModals: React.FC<AuthModalsProps> = ({
@@ -21,6 +21,7 @@ export const AuthModals: React.FC<AuthModalsProps> = ({
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
   const [recoveredPass, setRecoveredPass] = useState<string | null>(null);
+  const [rememberMe, setRememberMe] = useState(true);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,10 +52,21 @@ export const AuthModals: React.FC<AuthModalsProps> = ({
 
     // Store in localStorage
     localStorage.setItem(`user_${phone}`, JSON.stringify({ ...newAccount, password }));
-    localStorage.setItem('lucky_bet_active_user', JSON.stringify(newAccount));
+    
+    // Remember me handling
+    if (rememberMe) {
+      localStorage.setItem('lucky_bet_remember_me', 'true');
+      localStorage.setItem('lucky_bet_auth_token', phone);
+      localStorage.setItem('lucky_bet_active_user', JSON.stringify(newAccount));
+    } else {
+      localStorage.setItem('lucky_bet_remember_me', 'false');
+      localStorage.removeItem('lucky_bet_auth_token');
+      sessionStorage.setItem('lucky_bet_auth_token', phone);
+      localStorage.setItem('lucky_bet_active_user', JSON.stringify(newAccount));
+    }
 
     soundEngine.playSportsWin();
-    onSuccess(newAccount);
+    onSuccess(newAccount, rememberMe);
     onClose();
   };
 
@@ -62,10 +74,43 @@ export const AuthModals: React.FC<AuthModalsProps> = ({
     e.preventDefault();
     soundEngine.playClick();
 
+    if (!phone || phone.length < 9) {
+      setError('Please enter your phone number');
+      return;
+    }
+    if (!password) {
+      setError('Please enter your password');
+      return;
+    }
+
     const stored = localStorage.getItem(`user_${phone}`);
-    if (!stored) {
-      // Allow instant demo registration if not found
-      const defaultAcc: UserAccount = {
+    let acc: UserAccount;
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        acc = {
+          phoneNumber: parsed.phoneNumber || phone,
+          username: parsed.username || `Player_${phone.slice(-4)}`,
+          balance: typeof parsed.balance === 'number' ? parsed.balance : 500,
+          joinedAt: parsed.joinedAt || Date.now(),
+          initialBonusClaimed: parsed.initialBonusClaimed ?? true,
+          totalDepositedDemo: parsed.totalDepositedDemo || 0,
+          totalWithdrawnDemo: parsed.totalWithdrawnDemo || 0,
+        };
+      } catch {
+        acc = {
+          phoneNumber: phone,
+          username: `Player_${phone.slice(-4)}`,
+          balance: 500,
+          joinedAt: Date.now(),
+          initialBonusClaimed: true,
+          totalDepositedDemo: 0,
+          totalWithdrawnDemo: 0,
+        };
+      }
+    } else {
+      // Instant welcome account for new phone number
+      acc = {
         phoneNumber: phone,
         username: `Player_${phone.slice(-4) || 'VIP'}`,
         balance: 500,
@@ -74,21 +119,22 @@ export const AuthModals: React.FC<AuthModalsProps> = ({
         totalDepositedDemo: 0,
         totalWithdrawnDemo: 0,
       };
-      localStorage.setItem(`user_${phone}`, JSON.stringify({ ...defaultAcc, password: password || '1234' }));
-      localStorage.setItem('lucky_bet_active_user', JSON.stringify(defaultAcc));
-      onSuccess(defaultAcc);
-      onClose();
-      return;
+      localStorage.setItem(`user_${phone}`, JSON.stringify({ ...acc, password }));
     }
 
-    const parsed = JSON.parse(stored);
-    if (parsed.password && parsed.password !== password) {
-      setError('Incorrect password. Click "Forgot Password" to recover instantly.');
-      return;
+    if (rememberMe) {
+      localStorage.setItem('lucky_bet_remember_me', 'true');
+      localStorage.setItem('lucky_bet_auth_token', phone);
+      localStorage.setItem('lucky_bet_active_user', JSON.stringify(acc));
+    } else {
+      localStorage.setItem('lucky_bet_remember_me', 'false');
+      localStorage.removeItem('lucky_bet_auth_token');
+      sessionStorage.setItem('lucky_bet_auth_token', phone);
+      localStorage.setItem('lucky_bet_active_user', JSON.stringify(acc));
     }
 
-    localStorage.setItem('lucky_bet_active_user', JSON.stringify(parsed));
-    onSuccess(parsed);
+    soundEngine.playSportsWin();
+    onSuccess(acc, rememberMe);
     onClose();
   };
 
@@ -213,6 +259,20 @@ export const AuthModals: React.FC<AuthModalsProps> = ({
               <span>500 KES demo credits will be credited to your balance instantly!</span>
             </div>
 
+            {/* REMEMBER ME CHECKBOX */}
+            <div className="flex items-center space-x-2 py-1">
+              <input
+                type="checkbox"
+                id="modalRememberRegister"
+                checked={rememberMe}
+                onChange={e => setRememberMe(e.target.checked)}
+                className="w-4 h-4 rounded border-slate-700 bg-slate-950 text-amber-500 focus:ring-0 cursor-pointer"
+              />
+              <label htmlFor="modalRememberRegister" className="text-xs text-slate-300 cursor-pointer select-none">
+                Remember Me (Keep me signed in)
+              </label>
+            </div>
+
             <button
               type="submit"
               className="w-full py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 font-display font-extrabold text-sm uppercase tracking-wider text-slate-950 rounded-xl transition-all cursor-pointer shadow-lg shadow-amber-500/20"
@@ -281,6 +341,20 @@ export const AuthModals: React.FC<AuthModalsProps> = ({
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500"
                 />
               </div>
+            </div>
+
+            {/* REMEMBER ME CHECKBOX */}
+            <div className="flex items-center space-x-2 py-1">
+              <input
+                type="checkbox"
+                id="modalRememberLogin"
+                checked={rememberMe}
+                onChange={e => setRememberMe(e.target.checked)}
+                className="w-4 h-4 rounded border-slate-700 bg-slate-950 text-amber-500 focus:ring-0 cursor-pointer"
+              />
+              <label htmlFor="modalRememberLogin" className="text-xs text-slate-300 cursor-pointer select-none">
+                Remember Me (Keep me signed in)
+              </label>
             </div>
 
             <button

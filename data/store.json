@@ -1,0 +1,71 @@
+{
+  "users": [
+    {
+      "phoneNumber": "0799001122",
+      "username": "Device2_Player",
+      "balance": 1050,
+      "joinedAt": 1792491410291,
+      "initialBonusClaimed": true,
+      "totalDepositedDemo": 300,
+      "totalWithdrawnDemo": 0
+    },
+    {
+      "phoneNumber": "0712345678",
+      "username": "LuckyPlayer_254",
+      "balance": 500,
+      "joinedAt": 1792404468611,
+      "initialBonusClaimed": true,
+      "totalDepositedDemo": 0,
+      "totalWithdrawnDemo": 0
+    },
+    {
+      "phoneNumber": "0722894102",
+      "username": "Kiprotich_99",
+      "balance": 750,
+      "joinedAt": 1792447668611,
+      "initialBonusClaimed": true,
+      "totalDepositedDemo": 200,
+      "totalWithdrawnDemo": 0
+    },
+    {
+      "phoneNumber": "0714529381",
+      "username": "Amina_Bet",
+      "balance": 1200,
+      "joinedAt": 1792469268611,
+      "initialBonusClaimed": true,
+      "totalDepositedDemo": 500,
+      "totalWithdrawnDemo": 0
+    },
+    {
+      "phoneNumber": "0799812401",
+      "username": "Omondi_K",
+      "balance": 350,
+      "joinedAt": 1792480068611,
+      "initialBonusClaimed": true,
+      "totalDepositedDemo": 0,
+      "totalWithdrawnDemo": 0
+    }
+  ],
+  "pendingDeposits": [
+    {
+      "id": "dep-101",
+      "phoneNumber": "0722894102",
+      "username": "Kiprotich_99",
+      "amount": 200,
+      "code": "QKF81920J1",
+      "timestamp": 1792490748611,
+      "status": "PENDING"
+    },
+    {
+      "id": "dep-102",
+      "phoneNumber": "0714529381",
+      "username": "Amina_Bet",
+      "amount": 300,
+      "code": "QK9103982A",
+      "timestamp": 1792490508611,
+      "status": "PENDING"
+    }
+  ],
+  "version": 5,
+  "updatedAt": 1792491410344
+}

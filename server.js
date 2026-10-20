@@ -2,12 +2,17 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+import { setupApiRoutes } from './serverApi.js';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const HOST = '0.0.0.0';
+
+// Enable JSON body parsing for API requests
+app.use(express.json());
 
 // Health check endpoint for Render zero-downtime health monitors
 app.get('/health', (req, res) => {
@@ -17,6 +22,9 @@ app.get('/health', (req, res) => {
     uptime: process.uptime(),
   });
 });
+
+// Real-time API endpoints for cross-device users & deposits sync
+setupApiRoutes(app);
 
 // Serve static assets from Vite build output directory
 const distPath = path.join(__dirname, 'dist');
