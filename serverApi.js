@@ -4,70 +4,19 @@ import path from 'path';
 const DATA_DIR = path.resolve(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'store.json');
 
-const INITIAL_USERS = [
-  {
-    phoneNumber: '0712345678',
-    username: 'LuckyPlayer_254',
-    balance: 500.0,
-    joinedAt: Date.now() - 86400000,
-    initialBonusClaimed: true,
-    totalDepositedDemo: 0,
-    totalWithdrawnDemo: 0,
-  },
-  {
-    phoneNumber: '0722894102',
-    username: 'Kiprotich_99',
-    balance: 750.0,
-    joinedAt: Date.now() - 43200000,
-    initialBonusClaimed: true,
-    totalDepositedDemo: 200,
-    totalWithdrawnDemo: 0,
-  },
-  {
-    phoneNumber: '0714529381',
-    username: 'Amina_Bet',
-    balance: 1200.0,
-    joinedAt: Date.now() - 21600000,
-    initialBonusClaimed: true,
-    totalDepositedDemo: 500,
-    totalWithdrawnDemo: 0,
-  },
-  {
-    phoneNumber: '0799812401',
-    username: 'Omondi_K',
-    balance: 350.0,
-    joinedAt: Date.now() - 10800000,
-    initialBonusClaimed: true,
-    totalDepositedDemo: 0,
-    totalWithdrawnDemo: 0,
-  },
-];
+// Real users only - NO virtual users
+const INITIAL_USERS = [];
+const INITIAL_DEPOSITS = [];
 
-const INITIAL_DEPOSITS = [
-  {
-    id: 'dep-101',
-    phoneNumber: '0722894102',
-    username: 'Kiprotich_99',
-    amount: 200,
-    code: 'QKF81920J1',
-    timestamp: Date.now() - 120000,
-    status: 'PENDING',
-  },
-  {
-    id: 'dep-102',
-    phoneNumber: '0714529381',
-    username: 'Amina_Bet',
-    amount: 300,
-    code: 'QK9103982A',
-    timestamp: Date.now() - 360000,
-    status: 'PENDING',
-  },
-];
+// Known dummy / virtual phone numbers to filter out forever
+const VIRTUAL_PHONES = new Set(['0712345678', '0722894102', '0714529381', '0799812401']);
+const VIRTUAL_DEP_IDS = new Set(['dep-101', 'dep-102']);
 
 class RealtimeStore {
   constructor() {
-    this.users = [...INITIAL_USERS];
-    this.pendingDeposits = [...INITIAL_DEPOSITS];
+    this.users = [];
+    this.credentials = {}; // phone -> password for cross-device authentication
+    this.pendingDeposits = [];
     this.version = 1;
     this.sseClients = new Set();
     this.initStore();
@@ -81,17 +30,21 @@ class RealtimeStore {
       if (fs.existsSync(DB_FILE)) {
         const raw = fs.readFileSync(DB_FILE, 'utf-8');
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed.users) && parsed.users.length > 0) {
-          this.users = parsed.users;
+        if (Array.isArray(parsed.users)) {
+          // Strictly purge any legacy virtual users so admin only sees real registered players
+          this.users = parsed.users.filter(u => u && !VIRTUAL_PHONES.has(u.phoneNumber));
+        }
+        if (parsed.credentials && typeof parsed.credentials === 'object') {
+          this.credentials = parsed.credentials;
         }
         if (Array.isArray(parsed.pendingDeposits)) {
-          this.pendingDeposits = parsed.pendingDeposits;
+          this.pendingDeposits = parsed.pendingDeposits.filter(d => d && !VIRTUAL_DEP_IDS.has(d.id));
         }
-      } else {
-        this.persist();
       }
+      // Save sanitized real state
+      this.persist();
     } catch (e) {
-      console.warn('Could not read store.json, using in-memory store:', e.message);
+      console.warn('Could not read store.json, using clean in-memory store:', e.message);
     }
   }
 
@@ -105,6 +58,7 @@ class RealtimeStore {
         JSON.stringify(
           {
             users: this.users,
+            credentials: this.credentials,
             pendingDeposits: this.pendingDeposits,
             version: this.version,
             updatedAt: Date.now(),
@@ -138,21 +92,86 @@ class RealtimeStore {
     }
   }
 
-  registerOrUpdateUser(account) {
+  registerOrUpdateUser(account, password = null) {
+    // Prevent dummy virtual accounts from being created
+    if (VIRTUAL_PHONES.has(account.phoneNumber)) {
+      return { user: account, isNew: false };
+    }
+
     const idx = this.users.findIndex(u => u.phoneNumber === account.phoneNumber);
     let isNew = false;
+    let savedUser = null;
+
     if (idx >= 0) {
-      this.users[idx] = { ...this.users[idx], ...account };
+      this.users[idx] = {
+        ...this.users[idx],
+        ...account,
+        lastSeen: Date.now(),
+      };
+      savedUser = this.users[idx];
     } else {
       isNew = true;
-      this.users.unshift(account);
+      savedUser = {
+        phoneNumber: account.phoneNumber,
+        username: account.username || `Player_${account.phoneNumber.slice(-4)}`,
+        balance: typeof account.balance === 'number' ? account.balance : 500,
+        joinedAt: account.joinedAt || Date.now(),
+        initialBonusClaimed: true,
+        totalDepositedDemo: account.totalDepositedDemo || 0,
+        totalWithdrawnDemo: account.totalWithdrawnDemo || 0,
+        device: account.device || 'Mobile / Web Browser',
+        lastSeen: Date.now(),
+      };
+      this.users.unshift(savedUser);
     }
+
+    if (password) {
+      this.credentials[account.phoneNumber] = password;
+    }
+
     this.broadcast(isNew ? 'USER_REGISTERED' : 'USER_UPDATED', {
-      user: account,
+      user: savedUser,
       isNew,
       totalUsers: this.users.length,
     });
-    return { user: account, isNew };
+    return { user: savedUser, isNew };
+  }
+
+  authenticateUser(phoneNumber, password) {
+    const cleanPhone = (phoneNumber || '').trim();
+    const user = this.users.find(u => u.phoneNumber === cleanPhone);
+
+    if (!user) {
+      return { success: false, error: 'Account not found. Please create an account first.' };
+    }
+
+    const savedPass = this.credentials[cleanPhone];
+    if (savedPass && password && savedPass !== password) {
+      return { success: false, error: 'Incorrect password. Please try again.' };
+    }
+
+    user.lastSeen = Date.now();
+    this.broadcast('USER_UPDATED', { user, isLogin: true });
+    return { success: true, user };
+  }
+
+  deleteUser(phoneNumber) {
+    const idx = this.users.findIndex(u => u.phoneNumber === phoneNumber);
+    if (idx >= 0) {
+      const removed = this.users.splice(idx, 1)[0];
+      delete this.credentials[phoneNumber];
+      this.broadcast('USER_DELETED', { phoneNumber, remaining: this.users.length });
+      return removed;
+    }
+    return null;
+  }
+
+  clearAllUsers() {
+    this.users = [];
+    this.credentials = {};
+    this.pendingDeposits = [];
+    this.broadcast('ALL_USERS_CLEARED', { timestamp: Date.now() });
+    return true;
   }
 
   addFunds(phone, amount) {
@@ -208,7 +227,7 @@ class RealtimeStore {
 export const realtimeStore = new RealtimeStore();
 
 export function setupApiRoutes(app) {
-  // 1. Get Live State (for polling and initialization)
+  // 1. Get Live State (for polling and initial app state)
   app.get('/api/live-status', (req, res) => {
     res.json({
       status: 'ok',
@@ -253,17 +272,89 @@ export function setupApiRoutes(app) {
     });
   });
 
-  // 3. User Registration / Sync from any device
+  // 3. User Registration (Cross-device authoritative register)
+  app.post('/api/auth/register', (req, res) => {
+    const { phoneNumber, username, password } = req.body || {};
+    const cleanPhone = (phoneNumber || '').trim();
+
+    if (!cleanPhone || cleanPhone.length < 9) {
+      return res.status(400).json({ error: 'Please enter a valid phone number (at least 9 digits)' });
+    }
+    if (!password || password.length < 4) {
+      return res.status(400).json({ error: 'Password must be at least 4 characters long' });
+    }
+
+    const cleanUsername = (username || '').trim() || `Player_${cleanPhone.slice(-4)}`;
+    const userAgent = req.headers['user-agent'] || '';
+    const isMobile = /mobile|android|iphone|ipad/i.test(userAgent);
+    const device = isMobile ? 'Mobile Phone' : 'Desktop / Laptop Browser';
+
+    const account = {
+      phoneNumber: cleanPhone,
+      username: cleanUsername,
+      balance: 500, // 500 KES Instant Free Welcome Bonus
+      joinedAt: Date.now(),
+      initialBonusClaimed: true,
+      totalDepositedDemo: 0,
+      totalWithdrawnDemo: 0,
+      device,
+    };
+
+    const result = realtimeStore.registerOrUpdateUser(account, password);
+    console.log(`[AUTH] New real player registered: ${cleanPhone} (${cleanUsername}) from ${device}`);
+    res.json({ success: true, user: result.user });
+  });
+
+  // 4. User Sign In (Cross-device authoritative login)
+  app.post('/api/auth/login', (req, res) => {
+    const { phoneNumber, password } = req.body || {};
+    const cleanPhone = (phoneNumber || '').trim();
+
+    if (!cleanPhone) {
+      return res.status(400).json({ error: 'Please enter your registered phone number' });
+    }
+
+    const authResult = realtimeStore.authenticateUser(cleanPhone, password);
+    if (!authResult.success) {
+      return res.status(401).json({ error: authResult.error });
+    }
+
+    console.log(`[AUTH] Player logged in: ${cleanPhone}`);
+    res.json({ success: true, user: authResult.user });
+  });
+
+  // 5. User Sync / Update from any client
   app.post('/api/users', (req, res) => {
     const user = req.body;
     if (!user || !user.phoneNumber) {
       return res.status(400).json({ error: 'Missing phoneNumber' });
     }
-    const result = realtimeStore.registerOrUpdateUser(user);
+    const result = realtimeStore.registerOrUpdateUser(user, req.body.password || null);
     res.json({ success: true, ...result });
   });
 
-  // 4. Admin Add Funds
+  // 6. Get All Users (for Admin or initial sync)
+  app.get('/api/users', (req, res) => {
+    res.json({ users: realtimeStore.users });
+  });
+
+  // 7. Admin Delete User
+  app.delete('/api/users/:phone', (req, res) => {
+    const { phone } = req.params;
+    const deleted = realtimeStore.deleteUser(phone);
+    if (!deleted) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    res.json({ success: true, deletedUser: deleted });
+  });
+
+  // 8. Admin Clear All Users
+  app.post('/api/admin/clear-all-users', (req, res) => {
+    realtimeStore.clearAllUsers();
+    res.json({ success: true, message: 'All users cleared' });
+  });
+
+  // 9. Admin Add Funds
   app.post('/api/users/:phone/funds', (req, res) => {
     const { phone } = req.params;
     const { amount } = req.body;
@@ -277,7 +368,7 @@ export function setupApiRoutes(app) {
     res.json({ success: true, user: updatedUser });
   });
 
-  // 5. Submit Deposit Request from any device
+  // 10. Submit Deposit Request from any device
   app.post('/api/deposits', (req, res) => {
     const deposit = req.body;
     if (!deposit || !deposit.phoneNumber || !deposit.amount) {
@@ -295,7 +386,7 @@ export function setupApiRoutes(app) {
     res.json({ success: true, deposit: saved });
   });
 
-  // 6. Admin Approve Deposit
+  // 11. Admin Approve Deposit
   app.post('/api/deposits/:id/approve', (req, res) => {
     const { id } = req.params;
     const result = realtimeStore.approveDeposit(id);
@@ -305,7 +396,7 @@ export function setupApiRoutes(app) {
     res.json({ success: true, ...result });
   });
 
-  // 7. Admin Reject Deposit
+  // 12. Admin Reject Deposit
   app.post('/api/deposits/:id/reject', (req, res) => {
     const { id } = req.params;
     const result = realtimeStore.rejectDeposit(id);

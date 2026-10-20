@@ -1,6 +1,6 @@
 {
   "name": "Lucky Bet",
-  "description": "Free-to-play sports betting and crash gaming simulator featuring realistic Aviator flight physics, live football fixtures, and virtual wallet.",
+  "description": "Sports betting and crash gaming platform featuring realistic Aviator flight physics, live football fixtures, and account wallet.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

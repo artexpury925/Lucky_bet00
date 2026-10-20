@@ -102,7 +102,7 @@ export const CashierModal: React.FC<CashierModalProps> = ({
           </div>
           <div className="flex justify-between items-end mt-3">
             <div>
-              <span className="text-xs text-slate-400">Available Demo Balance</span>
+              <span className="text-xs text-slate-400">Available Balance</span>
               <div className="text-3xl font-black font-display text-emerald-400">
                 {user.balance.toFixed(2)}{' '}
                 <span className="text-base text-slate-300 font-semibold">KES</span>
@@ -313,7 +313,7 @@ export const CashierModal: React.FC<CashierModalProps> = ({
                 </div>
                 <div className="flex justify-between">
                   <span>Processing Fee:</span>
-                  <span className="text-emerald-400 font-bold">0.00 KES (Free Demo)</span>
+                  <span className="text-emerald-400 font-bold">0.00 KES (Free)</span>
                 </div>
                 <div className="flex justify-between pt-1 border-t border-slate-800 text-white font-bold">
                   <span>Net Amount to Phone:</span>

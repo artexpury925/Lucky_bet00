@@ -102,4 +102,6 @@ export interface UserAccount {
   initialBonusClaimed: boolean;
   totalDepositedDemo: number;
   totalWithdrawnDemo: number;
+  device?: string;
+  lastSeen?: number;
 }

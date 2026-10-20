@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { UserAccount } from '../../types';
 import { soundEngine } from '../../utils/soundEngine';
+import { realtimeClient } from '../../utils/realtimeClient';
 import {
   Plane,
   ShieldCheck,
@@ -18,6 +19,7 @@ import {
   ArrowRight,
   Shield,
   HelpCircle,
+  Loader2,
 } from 'lucide-react';
 
 interface AuthGatewayProps {
@@ -35,23 +37,15 @@ export const AuthGateway: React.FC<AuthGatewayProps> = ({ onSuccess, onOpenAdmin
   const [recoveredPass, setRecoveredPass] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
-  // Quick demo account pre-fill for fast testing
-  const handleDemoFill = (demoPhone: string, demoUser: string) => {
-    soundEngine.playClick();
-    setPhone(demoPhone);
-    setUsername(demoUser);
-    setPassword('1234');
-    setError(null);
-  };
-
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     soundEngine.playClick();
 
     const cleanPhone = phone.trim();
     if (!cleanPhone || cleanPhone.length < 9) {
-      setError('Please enter a valid phone number (e.g. 0712345678)');
+      setError('Please enter a valid phone number (at least 9 digits, e.g. 0712345678)');
       return;
     }
     if (!password || password.length < 4) {
@@ -61,36 +55,55 @@ export const AuthGateway: React.FC<AuthGatewayProps> = ({ onSuccess, onOpenAdmin
 
     const cleanUsername = username.trim() || `Player_${cleanPhone.slice(-4)}`;
 
-    const newAccount: UserAccount = {
+    setIsSubmitting(true);
+    setError(null);
+
+    // Register on the server so that the admin panel on ANY device/phone/browser sees them immediately
+    const res = await realtimeClient.registerUser({
       phoneNumber: cleanPhone,
       username: cleanUsername,
-      balance: 500, // 500 KES Instant Free Welcome Bonus
-      joinedAt: Date.now(),
-      initialBonusClaimed: true,
-      totalDepositedDemo: 0,
-      totalWithdrawnDemo: 0,
-    };
+      password,
+    });
+
+    setIsSubmitting(false);
+
+    let finalAccount: UserAccount;
+    if (res.success && res.user) {
+      finalAccount = res.user;
+    } else {
+      // Local fallback in case network was momentarily slow
+      finalAccount = {
+        phoneNumber: cleanPhone,
+        username: cleanUsername,
+        balance: 500,
+        joinedAt: Date.now(),
+        initialBonusClaimed: true,
+        totalDepositedDemo: 0,
+        totalWithdrawnDemo: 0,
+      };
+      realtimeClient.syncUserToServer(finalAccount, password);
+    }
 
     // Store user credentials
-    localStorage.setItem(`user_${cleanPhone}`, JSON.stringify({ ...newAccount, password }));
+    localStorage.setItem(`user_${cleanPhone}`, JSON.stringify({ ...finalAccount, password }));
 
     // Handle persistent Remember Me vs session
     if (rememberMe) {
       localStorage.setItem('lucky_bet_remember_me', 'true');
       localStorage.setItem('lucky_bet_auth_token', cleanPhone);
-      localStorage.setItem('lucky_bet_active_user', JSON.stringify(newAccount));
+      localStorage.setItem('lucky_bet_active_user', JSON.stringify(finalAccount));
     } else {
       localStorage.setItem('lucky_bet_remember_me', 'false');
       localStorage.removeItem('lucky_bet_auth_token');
       sessionStorage.setItem('lucky_bet_auth_token', cleanPhone);
-      localStorage.setItem('lucky_bet_active_user', JSON.stringify(newAccount));
+      localStorage.setItem('lucky_bet_active_user', JSON.stringify(finalAccount));
     }
 
     soundEngine.playSportsWin();
-    onSuccess(newAccount, rememberMe);
+    onSuccess(finalAccount, rememberMe);
   };
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     soundEngine.playClick();
 
@@ -104,44 +117,47 @@ export const AuthGateway: React.FC<AuthGatewayProps> = ({ onSuccess, onOpenAdmin
       return;
     }
 
-    const stored = localStorage.getItem(`user_${cleanPhone}`);
+    setIsSubmitting(true);
+    setError(null);
+
+    // Verify credentials against server for cross-device & cross-browser access
+    const res = await realtimeClient.loginUser({
+      phoneNumber: cleanPhone,
+      password,
+    });
+
+    setIsSubmitting(false);
+
     let account: UserAccount;
 
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored);
-        account = {
-          phoneNumber: parsed.phoneNumber || cleanPhone,
-          username: parsed.username || `Player_${cleanPhone.slice(-4)}`,
-          balance: typeof parsed.balance === 'number' ? parsed.balance : 500,
-          joinedAt: parsed.joinedAt || Date.now(),
-          initialBonusClaimed: parsed.initialBonusClaimed ?? true,
-          totalDepositedDemo: parsed.totalDepositedDemo || 0,
-          totalWithdrawnDemo: parsed.totalWithdrawnDemo || 0,
-        };
-      } catch {
-        account = {
-          phoneNumber: cleanPhone,
-          username: `Player_${cleanPhone.slice(-4)}`,
-          balance: 500,
-          joinedAt: Date.now(),
-          initialBonusClaimed: true,
-          totalDepositedDemo: 0,
-          totalWithdrawnDemo: 0,
-        };
-      }
-    } else {
-      // First-time number logging in: automatically provision welcome demo account
-      account = {
-        phoneNumber: cleanPhone,
-        username: `Player_${cleanPhone.slice(-4) || 'VIP'}`,
-        balance: 500,
-        joinedAt: Date.now(),
-        initialBonusClaimed: true,
-        totalDepositedDemo: 0,
-        totalWithdrawnDemo: 0,
-      };
+    if (res.success && res.user) {
+      account = res.user;
       localStorage.setItem(`user_${cleanPhone}`, JSON.stringify({ ...account, password }));
+    } else {
+      // Check local storage fallback
+      const stored = localStorage.getItem(`user_${cleanPhone}`);
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          account = {
+            phoneNumber: parsed.phoneNumber || cleanPhone,
+            username: parsed.username || `Player_${cleanPhone.slice(-4)}`,
+            balance: typeof parsed.balance === 'number' ? parsed.balance : 500,
+            joinedAt: parsed.joinedAt || Date.now(),
+            initialBonusClaimed: parsed.initialBonusClaimed ?? true,
+            totalDepositedDemo: parsed.totalDepositedDemo || 0,
+            totalWithdrawnDemo: parsed.totalWithdrawnDemo || 0,
+          };
+          // Sync account to server so admin sees it now
+          realtimeClient.syncUserToServer(account, password);
+        } catch {
+          setError(res.error || 'Failed to authenticate');
+          return;
+        }
+      } else {
+        setError(res.error || 'Account not found. Please create an account first.');
+        return;
+      }
     }
 
     if (rememberMe) {
@@ -390,34 +406,21 @@ export const AuthGateway: React.FC<AuthGatewayProps> = ({ onSuccess, onOpenAdmin
 
                 <button
                   type="submit"
-                  className="w-full py-3.5 bg-gradient-to-r from-amber-500 to-red-600 hover:from-amber-400 hover:to-red-500 font-display font-black text-sm uppercase tracking-wider text-slate-950 rounded-xl shadow-lg shadow-amber-500/20 transition-all flex items-center justify-center space-x-2 cursor-pointer mt-2"
+                  disabled={isSubmitting}
+                  className="w-full py-3.5 bg-gradient-to-r from-amber-500 to-red-600 hover:from-amber-400 hover:to-red-500 font-display font-black text-sm uppercase tracking-wider text-slate-950 rounded-xl shadow-lg shadow-amber-500/20 transition-all flex items-center justify-center space-x-2 cursor-pointer mt-2 disabled:opacity-60"
                 >
-                  <span>Sign In & Enter Game</span>
-                  <ArrowRight className="w-4 h-4" />
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
+                      <span>Verifying Account...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Sign In & Enter Game</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
                 </button>
-
-                {/* Quick Demo Credentials helper */}
-                <div className="pt-3 border-t border-slate-800/80">
-                  <span className="text-[10px] text-slate-400 block mb-2 font-semibold">
-                    Quick Demo Profiles (1-Click Fill):
-                  </span>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleDemoFill('0712345678', 'LuckyPlayer_254')}
-                      className="text-[11px] bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white px-2.5 py-1 rounded-lg transition-colors"
-                    >
-                      0712345678 (Player 254)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDemoFill('0722894102', 'Kiprotich_99')}
-                      className="text-[11px] bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white px-2.5 py-1 rounded-lg transition-colors"
-                    >
-                      0722894102 (Kiprotich)
-                    </button>
-                  </div>
-                </div>
               </form>
             )}
 
@@ -504,10 +507,20 @@ export const AuthGateway: React.FC<AuthGatewayProps> = ({ onSuccess, onOpenAdmin
 
                 <button
                   type="submit"
-                  className="w-full py-3.5 bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-400 font-display font-black text-sm uppercase tracking-wider text-slate-950 rounded-xl shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center space-x-2 cursor-pointer mt-2"
+                  disabled={isSubmitting}
+                  className="w-full py-3.5 bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-400 font-display font-black text-sm uppercase tracking-wider text-slate-950 rounded-xl shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center space-x-2 cursor-pointer mt-2 disabled:opacity-60"
                 >
-                  <span>Create Account & Get 500 KES</span>
-                  <ArrowRight className="w-4 h-4" />
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
+                      <span>Creating Account & Syncing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Create Account & Get 500 KES</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
                 </button>
               </form>
             )}
@@ -574,7 +587,7 @@ export const AuthGateway: React.FC<AuthGatewayProps> = ({ onSuccess, onOpenAdmin
                     type="submit"
                     className="w-full py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 font-display font-extrabold text-sm uppercase tracking-wider text-slate-950 rounded-xl transition-all cursor-pointer"
                   >
-                    Retrieve Demo Password
+                    Retrieve Password
                   </button>
                 )}
 

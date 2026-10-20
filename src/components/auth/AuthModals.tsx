@@ -256,7 +256,7 @@ export const AuthModals: React.FC<AuthModalsProps> = ({
 
             <div className="bg-emerald-950/40 border border-emerald-500/40 p-2.5 rounded-xl text-xs text-emerald-300 flex items-center space-x-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-              <span>500 KES demo credits will be credited to your balance instantly!</span>
+              <span>500 KES welcome bonus credits will be credited to your balance instantly!</span>
             </div>
 
             {/* REMEMBER ME CHECKBOX */}

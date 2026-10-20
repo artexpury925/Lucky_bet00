@@ -172,26 +172,36 @@ export default function App() {
   const [theme, setTheme] = useState<AviatorTheme>('classic-red');
   const [isMuted, setIsMuted] = useState<boolean>(false);
 
+  // Known legacy virtual phones to ignore
+  const VIRTUAL_PHONES = ['0712345678', '0722894102', '0714529381', '0799812401'];
+
   // Persistent Auth State with Remember Me Support
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     const remember = localStorage.getItem('lucky_bet_remember_me') === 'true';
     const localToken = localStorage.getItem('lucky_bet_auth_token');
     const sessionToken = sessionStorage.getItem('lucky_bet_auth_token');
-    return (remember && !!localToken) || !!sessionToken;
+    const activeToken = (remember && localToken) || sessionToken;
+    if (activeToken && !VIRTUAL_PHONES.includes(activeToken)) {
+      return true;
+    }
+    return false;
   });
 
-  // User & Wallet State
+  // User & Wallet State (Real user accounts only)
   const [user, setUser] = useState<UserAccount>(() => {
     const saved = localStorage.getItem('lucky_bet_active_user');
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.phoneNumber && !VIRTUAL_PHONES.includes(parsed.phoneNumber)) {
+          return parsed;
+        }
       } catch {}
     }
     return {
-      phoneNumber: '0712345678',
-      username: 'LuckyPlayer_254',
-      balance: 500.0, // 500 KES Free Welcome Bonus awarded on start!
+      phoneNumber: '',
+      username: '',
+      balance: 500.0,
       joinedAt: Date.now(),
       initialBonusClaimed: true,
       totalDepositedDemo: 0,
@@ -211,8 +221,18 @@ export default function App() {
     soundEngine.playClick();
     localStorage.removeItem('lucky_bet_auth_token');
     sessionStorage.removeItem('lucky_bet_auth_token');
+    localStorage.removeItem('lucky_bet_active_user');
     localStorage.setItem('lucky_bet_remember_me', 'false');
     setIsAuthenticated(false);
+    setUser({
+      phoneNumber: '',
+      username: '',
+      balance: 500.0,
+      joinedAt: Date.now(),
+      initialBonusClaimed: true,
+      totalDepositedDemo: 0,
+      totalWithdrawnDemo: 0,
+    });
   };
 
   const [transactions, setTransactions] = useState<WalletTransaction[]>([
@@ -316,82 +336,32 @@ export default function App() {
   const [activeSlip, setActiveSlip] = useState<SlipSelection[]>([]);
   const [placedSportsBets, setPlacedSportsBets] = useState<PlacedSportsBet[]>([]);
 
-  // Registered Users Directory (Admin can view and add funds to any user)
+  // Registered Users Directory (Authoritative real users only)
   const [registeredUsers, setRegisteredUsers] = useState<UserAccount[]>(() => {
     const saved = localStorage.getItem('lucky_bet_all_users');
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const list = JSON.parse(saved);
+        if (Array.isArray(list)) {
+          return list.filter(u => u && u.phoneNumber && !VIRTUAL_PHONES.includes(u.phoneNumber));
+        }
       } catch {}
     }
-    return [
-      {
-        phoneNumber: '0712345678',
-        username: 'LuckyPlayer_254',
-        balance: 500.0,
-        joinedAt: Date.now() - 86400000,
-        initialBonusClaimed: true,
-        totalDepositedDemo: 0,
-        totalWithdrawnDemo: 0,
-      },
-      {
-        phoneNumber: '0722894102',
-        username: 'Kiprotich_99',
-        balance: 750.0,
-        joinedAt: Date.now() - 43200000,
-        initialBonusClaimed: true,
-        totalDepositedDemo: 200,
-        totalWithdrawnDemo: 0,
-      },
-      {
-        phoneNumber: '0714529381',
-        username: 'Amina_Bet',
-        balance: 1200.0,
-        joinedAt: Date.now() - 21600000,
-        initialBonusClaimed: true,
-        totalDepositedDemo: 500,
-        totalWithdrawnDemo: 0,
-      },
-      {
-        phoneNumber: '0799812401',
-        username: 'Omondi_K',
-        balance: 350.0,
-        joinedAt: Date.now() - 10800000,
-        initialBonusClaimed: true,
-        totalDepositedDemo: 0,
-        totalWithdrawnDemo: 0,
-      },
-    ];
+    return [];
   });
 
-  // Pending M-PESA Deposits Queue
+  // Pending M-PESA Deposits Queue (Real player deposits only)
   const [pendingDeposits, setPendingDeposits] = useState<PendingDeposit[]>(() => {
     const saved = localStorage.getItem('lucky_bet_pending_deposits');
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const list = JSON.parse(saved);
+        if (Array.isArray(list)) {
+          return list.filter(d => d && !['dep-101', 'dep-102'].includes(d.id));
+        }
       } catch {}
     }
-    return [
-      {
-        id: 'dep-101',
-        phoneNumber: '0722894102',
-        username: 'Kiprotich_99',
-        amount: 200,
-        code: 'QKF81920J1',
-        timestamp: Date.now() - 120000,
-        status: 'PENDING',
-      },
-      {
-        id: 'dep-102',
-        phoneNumber: '0714529381',
-        username: 'Amina_Bet',
-        amount: 300,
-        code: 'QK9103982A',
-        timestamp: Date.now() - 360000,
-        status: 'PENDING',
-      },
-    ];
+    return [];
   });
 
   // Save registered users & pending deposits to localStorage
@@ -405,6 +375,7 @@ export default function App() {
 
   // Keep user in localStorage and sync with registeredUsers
   useEffect(() => {
+    if (!user.phoneNumber || VIRTUAL_PHONES.includes(user.phoneNumber)) return;
     localStorage.setItem('lucky_bet_active_user', JSON.stringify(user));
     setRegisteredUsers(prev => {
       const idx = prev.findIndex(u => u.phoneNumber === user.phoneNumber);
@@ -421,11 +392,11 @@ export default function App() {
   const refreshLiveStatus = async () => {
     const status = await realtimeClient.fetchLiveStatus();
     if (!status) return;
-    if (Array.isArray(status.users) && status.users.length > 0) {
-      setRegisteredUsers(status.users);
+    if (Array.isArray(status.users)) {
+      setRegisteredUsers(status.users.filter(u => u && !VIRTUAL_PHONES.includes(u.phoneNumber)));
     }
     if (Array.isArray(status.pendingDeposits)) {
-      setPendingDeposits(status.pendingDeposits);
+      setPendingDeposits(status.pendingDeposits.filter(d => d && !['dep-101', 'dep-102'].includes(d.id)));
     }
   };
 
@@ -436,11 +407,11 @@ export default function App() {
     const syncInitialState = async () => {
       const status = await realtimeClient.fetchLiveStatus();
       if (!isMounted || !status) return;
-      if (Array.isArray(status.users) && status.users.length > 0) {
-        setRegisteredUsers(status.users);
+      if (Array.isArray(status.users)) {
+        setRegisteredUsers(status.users.filter(u => u && !VIRTUAL_PHONES.includes(u.phoneNumber)));
       }
       if (Array.isArray(status.pendingDeposits)) {
-        setPendingDeposits(status.pendingDeposits);
+        setPendingDeposits(status.pendingDeposits.filter(d => d && !['dep-101', 'dep-102'].includes(d.id)));
       }
     };
 
@@ -450,12 +421,21 @@ export default function App() {
     const unsubscribe = realtimeClient.subscribeToEvents(event => {
       if (!isMounted) return;
 
-      if (Array.isArray(event.users) && event.users.length > 0) {
-        setRegisteredUsers(event.users);
+      if (Array.isArray(event.users)) {
+        setRegisteredUsers(event.users.filter(u => u && !VIRTUAL_PHONES.includes(u.phoneNumber)));
       }
 
       if (Array.isArray(event.pendingDeposits)) {
-        setPendingDeposits(event.pendingDeposits);
+        setPendingDeposits(event.pendingDeposits.filter(d => d && !['dep-101', 'dep-102'].includes(d.id)));
+      }
+
+      if (event.type === 'USER_DELETED' && event.data?.phoneNumber) {
+        setRegisteredUsers(prev => prev.filter(u => u.phoneNumber !== event.data.phoneNumber));
+      }
+
+      if (event.type === 'ALL_USERS_CLEARED') {
+        setRegisteredUsers([]);
+        setPendingDeposits([]);
       }
 
       if (event.type === 'USER_REGISTERED' || event.type === 'USER_UPDATED') {
@@ -1138,8 +1118,8 @@ export default function App() {
                 <span className="text-xl sm:text-2xl font-black font-display tracking-tight text-white uppercase">
                   LUCKY <span className="text-amber-400">BET</span>
                 </span>
-                <span className="text-[10px] font-extrabold uppercase bg-emerald-500/20 text-emerald-400 px-1.5 py-0.2 rounded border border-emerald-500/30">
-                  FREE DEMO
+                <span className="text-[10px] font-extrabold uppercase bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/30">
+                  KENYA 254
                 </span>
               </div>
               <span className="hidden sm:block text-[10px] text-slate-400 tracking-wider">
@@ -1458,7 +1438,7 @@ export default function App() {
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center space-x-2">
             <span className="font-display font-extrabold text-slate-300">LUCKY BET</span>
-            <span>• Free-to-play sports & crash gaming demo platform</span>
+            <span>• Sports Betting & Aviator Crash Arena</span>
           </div>
 
           <div className="flex items-center space-x-4">
@@ -1474,7 +1454,7 @@ export default function App() {
               onClick={() => setIsCashierOpen(true)}
               className="hover:text-slate-300 transition-colors"
             >
-              Cashier Simulator
+              Cashier & Wallet
             </button>
           </div>
         </div>
@@ -1563,9 +1543,9 @@ export default function App() {
               </div>
 
               <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                <span className="font-bold text-white block mb-1">💼 Free Demo Wallet:</span>
+                <span className="font-bold text-white block mb-1">💼 Welcome Wallet & Cashier:</span>
                 <p>
-                  All accounts start with 500 KES free welcome credits. You can test demo deposits and practice withdrawals at any time via the Cashier.
+                  All accounts start with 500 KES free welcome credits. You can manage deposits and withdrawals at any time via the Cashier.
                 </p>
               </div>
             </div>
