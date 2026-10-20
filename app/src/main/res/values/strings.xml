@@ -1,0 +1,13 @@
+<resources>
+    <string name="app_name">Lucky Bet</string>
+    <string name="tab_aviator">Aviator</string>
+    <string name="tab_sports">Sports</string>
+    <string name="deposit">Deposit</string>
+    <string name="withdraw">Withdraw</string>
+    <string name="rules">Rules</string>
+    <string name="cash_out">Cash Out</string>
+    <string name="flew_away">Flew Away!</string>
+    <string name="waiting_for_next_round">Waiting for next flight</string>
+    <string name="place_bet">BET</string>
+    <string name="cancel_bet">CANCEL BET</string>
+</resources>
