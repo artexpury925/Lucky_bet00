@@ -87,7 +87,22 @@ export interface PlacedSportsBet {
 
 export interface WalletTransaction {
   id: string;
-  type: 'BONUS' | 'DEPOSIT_DEMO' | 'WITHDRAW_DEMO' | 'AVIATOR_WIN' | 'AVIATOR_BET' | 'SPORTS_BET' | 'SPORTS_WIN' | 'PENDING_DEPOSIT' | 'REFERRAL_BONUS';
+  type:
+    | 'BONUS'
+    | 'DEPOSIT_DEMO'
+    | 'WITHDRAW_DEMO'
+    | 'AVIATOR_WIN'
+    | 'AVIATOR_BET'
+    | 'SPORTS_BET'
+    | 'SPORTS_WIN'
+    | 'MINES_BET'
+    | 'MINES_WIN'
+    | 'PENALTY_BET'
+    | 'PENALTY_WIN'
+    | 'SPIN_WIN'
+    | 'RAIN_CLAIM'
+    | 'PENDING_DEPOSIT'
+    | 'REFERRAL_BONUS';
   amount: number;
   balanceAfter: number;
   description: string;
@@ -108,6 +123,7 @@ export interface UserAccount {
   referredBy?: string;
   referralBonusEarned?: number;
   referralCount?: number;
+  lastSpinTimestamp?: number;
 }
 
 export interface PushNotificationItem {
@@ -119,7 +135,34 @@ export interface PushNotificationItem {
   read: boolean;
   actionLabel?: string;
   actionPayload?: {
-    type: 'OPEN_CASHIER' | 'OPEN_SPORTS' | 'OPEN_REFERRAL' | 'VIEW_MATCH';
+    type: 'OPEN_CASHIER' | 'OPEN_SPORTS' | 'OPEN_REFERRAL' | 'VIEW_MATCH' | 'OPEN_MINES' | 'OPEN_PENALTY' | 'OPEN_SPIN';
     matchId?: string;
   };
+}
+
+export type MainNavTab = 'aviator' | 'sports' | 'mines' | 'penalty' | 'leaderboard';
+
+export interface ChatMessage {
+  id: string;
+  sender: string;
+  avatarSeed: string;
+  text: string;
+  timestamp: number;
+  isCurrentUser?: boolean;
+  isRain?: boolean;
+  rainAmount?: number;
+  rainClaimed?: boolean;
+  badge?: string;
+}
+
+export interface LeaderboardEntry {
+  id: string;
+  rank: number;
+  username: string;
+  location: string;
+  game: 'Aviator' | 'Sports Multi-bet' | 'Mines' | 'Penalty Shootout';
+  stake: number;
+  multiplier: number;
+  payout: number;
+  timestamp: number;
 }
