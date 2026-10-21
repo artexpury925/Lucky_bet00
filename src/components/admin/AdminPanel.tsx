@@ -140,7 +140,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <input
                   type="text"
                   required
-                  placeholder="KENYA@254"
+                  placeholder=""
                   value={username}
                   onChange={e => setUsername(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 font-mono"
@@ -154,7 +154,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <input
                   type="password"
                   required
-                  placeholder="KENYA@254"
+                  placeholder=""
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 font-mono"
