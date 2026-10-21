@@ -32,6 +32,7 @@ export const realtimeClient = {
     phoneNumber: string;
     username: string;
     password?: string;
+    referredBy?: string;
   }): Promise<AuthResponse> {
     try {
       const res = await fetch('/api/auth/register', {

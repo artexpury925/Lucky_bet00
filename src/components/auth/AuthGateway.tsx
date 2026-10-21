@@ -20,18 +20,31 @@ import {
   Shield,
   HelpCircle,
   Loader2,
+  Gift,
 } from 'lucide-react';
 
 interface AuthGatewayProps {
   onSuccess: (account: UserAccount, rememberMe: boolean) => void;
-  onOpenAdmin: () => void;
+  onOpenAdmin?: () => void;
 }
 
-export const AuthGateway: React.FC<AuthGatewayProps> = ({ onSuccess, onOpenAdmin }) => {
+export const AuthGateway: React.FC<AuthGatewayProps> = ({ onSuccess }) => {
   const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
+  const [referralCode, setReferralCode] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const ref = params.get('ref') || (window.location.hash.includes('ref=') ? window.location.hash.split('ref=')[1] : '');
+      if (ref) {
+        localStorage.setItem('lucky_referrer_code', ref.trim());
+        return ref.trim();
+      }
+      return localStorage.getItem('lucky_referrer_code') || '';
+    }
+    return '';
+  });
   const [rememberMe, setRememberMe] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [recoveredPass, setRecoveredPass] = useState<string | null>(null);
@@ -63,6 +76,7 @@ export const AuthGateway: React.FC<AuthGatewayProps> = ({ onSuccess, onOpenAdmin
       phoneNumber: cleanPhone,
       username: cleanUsername,
       password,
+      referredBy: referralCode.trim() || undefined,
     });
 
     setIsSubmitting(false);
@@ -80,6 +94,7 @@ export const AuthGateway: React.FC<AuthGatewayProps> = ({ onSuccess, onOpenAdmin
         initialBonusClaimed: true,
         totalDepositedDemo: 0,
         totalWithdrawnDemo: 0,
+        referredBy: referralCode.trim() || undefined,
       };
       realtimeClient.syncUserToServer(finalAccount, password);
     }
@@ -233,18 +248,11 @@ export const AuthGateway: React.FC<AuthGatewayProps> = ({ onSuccess, onOpenAdmin
           </div>
         </div>
 
-        {/* Admin Access Button */}
-        <button
-          type="button"
-          onClick={() => {
-            soundEngine.playClick();
-            onOpenAdmin();
-          }}
-          className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-900/90 hover:bg-slate-800 border border-slate-700 text-xs font-mono font-bold text-amber-400 hover:text-amber-300 transition-colors shadow-sm"
-        >
-          <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
-          <span>Admin Portal</span>
-        </button>
+        {/* Verified Security Badge */}
+        <div className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-900/90 border border-emerald-500/30 text-xs font-mono font-bold text-emerald-400 shadow-sm">
+          <Shield className="w-3.5 h-3.5 text-emerald-400" />
+          <span>256-Bit SSL Encrypted</span>
+        </div>
       </header>
 
       {/* Main Authentication Area */}
@@ -491,6 +499,34 @@ export const AuthGateway: React.FC<AuthGatewayProps> = ({ onSuccess, onOpenAdmin
                   </div>
                 </div>
 
+                {/* Referral Code (Optional) */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-semibold text-slate-300 flex items-center">
+                      <Gift className="w-3.5 h-3.5 mr-1 text-amber-400" />
+                      Referral Code <span className="text-slate-500 font-normal ml-1">(Optional)</span>
+                    </label>
+                    {referralCode && (
+                      <span className="text-[10px] text-emerald-400 font-bold bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-500/30">
+                        Active Referral Applied
+                      </span>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <Gift className="w-4 h-4 text-amber-400 absolute left-3 top-3.5" />
+                    <input
+                      type="text"
+                      placeholder="e.g. LUCKY-7777ARN"
+                      value={referralCode}
+                      onChange={e => setReferralCode(e.target.value.toUpperCase())}
+                      className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl pl-9 pr-3 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none font-mono uppercase tracking-wider"
+                    />
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Have an invitation link or friend's code? Enter it here to activate referral commission.
+                  </p>
+                </div>
+
                 {/* Remember Me Checkbox */}
                 <div className="flex items-center justify-between py-1">
                   <label className="flex items-center space-x-2 text-xs text-slate-300 cursor-pointer select-none">
@@ -606,27 +642,13 @@ export const AuthGateway: React.FC<AuthGatewayProps> = ({ onSuccess, onOpenAdmin
               </form>
             )}
 
-            {/* Bottom Admin Portal Hint */}
-            <div className="mt-6 pt-4 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-500">
-              <span>Admin credentials: KENYA@254</span>
-              <button
-                type="button"
-                onClick={() => {
-                  soundEngine.playClick();
-                  onOpenAdmin();
-                }}
-                className="text-amber-400/90 hover:text-amber-300 font-bold hover:underline"
-              >
-                Open Admin Portal &rarr;
-              </button>
-            </div>
           </div>
         </div>
       </main>
 
       {/* Footer */}
-      <footer className="w-full bg-[#0a0c10] border-t border-slate-900 py-3 px-4 text-center text-xs text-slate-500 z-10">
-        Lucky Bet Kenya &copy; 2026. Free-to-Play Entertainment & Crash Game Simulation.
+      <footer className="w-full bg-[#0a0c10] border-t border-slate-900 py-3.5 px-4 text-center text-xs text-slate-500 z-10">
+        Lucky Bet Kenya &copy; 2026. Sports Betting &amp; Aviator Crash Arena. All Rights Reserved.
       </footer>
     </div>
   );

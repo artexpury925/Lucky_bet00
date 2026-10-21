@@ -87,7 +87,7 @@ export interface PlacedSportsBet {
 
 export interface WalletTransaction {
   id: string;
-  type: 'BONUS' | 'DEPOSIT_DEMO' | 'WITHDRAW_DEMO' | 'AVIATOR_WIN' | 'AVIATOR_BET' | 'SPORTS_BET' | 'SPORTS_WIN' | 'PENDING_DEPOSIT';
+  type: 'BONUS' | 'DEPOSIT_DEMO' | 'WITHDRAW_DEMO' | 'AVIATOR_WIN' | 'AVIATOR_BET' | 'SPORTS_BET' | 'SPORTS_WIN' | 'PENDING_DEPOSIT' | 'REFERRAL_BONUS';
   amount: number;
   balanceAfter: number;
   description: string;
@@ -104,4 +104,22 @@ export interface UserAccount {
   totalWithdrawnDemo: number;
   device?: string;
   lastSeen?: number;
+  referralCode?: string;
+  referredBy?: string;
+  referralBonusEarned?: number;
+  referralCount?: number;
+}
+
+export interface PushNotificationItem {
+  id: string;
+  type: 'DEPOSIT_APPROVED' | 'MATCH_STARTING' | 'REFERRAL_BONUS' | 'SYSTEM';
+  title: string;
+  body: string;
+  timestamp: number;
+  read: boolean;
+  actionLabel?: string;
+  actionPayload?: {
+    type: 'OPEN_CASHIER' | 'OPEN_SPORTS' | 'OPEN_REFERRAL' | 'VIEW_MATCH';
+    matchId?: string;
+  };
 }

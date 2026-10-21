@@ -12,27 +12,37 @@ const INITIAL_DEPOSITS = [];
 const VIRTUAL_PHONES = new Set(['0712345678', '0722894102', '0714529381', '0799812401']);
 const VIRTUAL_DEP_IDS = new Set(['dep-101', 'dep-102']);
 
+function generateReferralCode(phone, username) {
+  const cleanPhone = (phone || '').replace(/\D/g, '').slice(-4) || '7777';
+  const cleanUser = (username || 'LB').replace(/[^a-zA-Z0-9]/g, '').slice(0, 3).toUpperCase() || 'LKY';
+  return `LUCKY-${cleanPhone}${cleanUser}`;
+}
+
 class RealtimeStore {
   constructor() {
     this.users = [];
-    this.credentials = {}; // phone -> password for cross-device authentication
+    this.credentials = {};
     this.pendingDeposits = [];
-    this.version = 1;
     this.sseClients = new Set();
+    this.version = 1;
     this.initStore();
   }
 
   initStore() {
     try {
-      if (!fs.existsSync(DATA_DIR)) {
-        fs.mkdirSync(DATA_DIR, { recursive: true });
-      }
       if (fs.existsSync(DB_FILE)) {
-        const raw = fs.readFileSync(DB_FILE, 'utf-8');
+        const raw = fs.readFileSync(DB_FILE, 'utf8');
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed.users)) {
-          // Strictly purge any legacy virtual users so admin only sees real registered players
-          this.users = parsed.users.filter(u => u && !VIRTUAL_PHONES.has(u.phoneNumber));
+          // Strictly filter out any old virtual users
+          this.users = parsed.users
+            .filter(u => u && !VIRTUAL_PHONES.has(u.phoneNumber))
+            .map(u => ({
+              ...u,
+              referralCode: u.referralCode || generateReferralCode(u.phoneNumber, u.username),
+              referralBonusEarned: u.referralBonusEarned || 0,
+              referralCount: u.referralCount || 0,
+            }));
         }
         if (parsed.credentials && typeof parsed.credentials === 'object') {
           this.credentials = parsed.credentials;
@@ -83,16 +93,17 @@ class RealtimeStore {
       version: this.version,
       timestamp: Date.now(),
     });
+
     for (const res of this.sseClients) {
       try {
         res.write(`data: ${payload}\n\n`);
-      } catch (err) {
+      } catch {
         this.sseClients.delete(res);
       }
     }
   }
 
-  registerOrUpdateUser(account, password = null) {
+  registerOrUpdateUser(account, password = null, referredBy = null) {
     // Prevent dummy virtual accounts from being created
     if (VIRTUAL_PHONES.has(account.phoneNumber)) {
       return { user: account, isNew: false };
@@ -106,11 +117,14 @@ class RealtimeStore {
       this.users[idx] = {
         ...this.users[idx],
         ...account,
+        referralCode: this.users[idx].referralCode || account.referralCode || generateReferralCode(account.phoneNumber, account.username),
         lastSeen: Date.now(),
       };
       savedUser = this.users[idx];
     } else {
       isNew = true;
+      const cleanRefBy = (referredBy || account.referredBy || '').trim().toUpperCase();
+
       savedUser = {
         phoneNumber: account.phoneNumber,
         username: account.username || `Player_${account.phoneNumber.slice(-4)}`,
@@ -121,7 +135,25 @@ class RealtimeStore {
         totalWithdrawnDemo: account.totalWithdrawnDemo || 0,
         device: account.device || 'Mobile / Web Browser',
         lastSeen: Date.now(),
+        referralCode: account.referralCode || generateReferralCode(account.phoneNumber, account.username),
+        referredBy: cleanRefBy || undefined,
+        referralBonusEarned: 0,
+        referralCount: 0,
       };
+
+      // Credit referrer count if valid
+      if (cleanRefBy) {
+        const refIndex = this.users.findIndex(
+          u => (u.referralCode && u.referralCode.toUpperCase() === cleanRefBy) ||
+               u.phoneNumber === cleanRefBy ||
+               (u.username && u.username.toUpperCase() === cleanRefBy)
+        );
+        if (refIndex >= 0) {
+          this.users[refIndex].referralCount = (this.users[refIndex].referralCount || 0) + 1;
+          console.log(`[REFERRAL] User ${savedUser.username} registered with referral code from ${this.users[refIndex].username}`);
+        }
+      }
+
       this.users.unshift(savedUser);
     }
 
@@ -151,6 +183,9 @@ class RealtimeStore {
     }
 
     user.lastSeen = Date.now();
+    if (!user.referralCode) {
+      user.referralCode = generateReferralCode(user.phoneNumber, user.username);
+    }
     this.broadcast('USER_UPDATED', { user, isLogin: true });
     return { success: true, user };
   }
@@ -200,18 +235,53 @@ class RealtimeStore {
     // Credit user if exists
     const userIdx = this.users.findIndex(u => u.phoneNumber === dep.phoneNumber);
     let updatedUser = null;
+    let referrerBonusAwarded = null;
+
     if (userIdx >= 0) {
       this.users[userIdx].balance += dep.amount;
       this.users[userIdx].totalDepositedDemo = (this.users[userIdx].totalDepositedDemo || 0) + dep.amount;
       updatedUser = this.users[userIdx];
+
+      // Check for Referral Bonus payout (10% of deposit, min 50 KES)
+      if (updatedUser.referredBy) {
+        const refCode = updatedUser.referredBy.trim().toUpperCase();
+        const refIdx = this.users.findIndex(
+          u => (u.referralCode && u.referralCode.toUpperCase() === refCode) ||
+               u.phoneNumber === updatedUser.referredBy ||
+               (u.username && u.username.toUpperCase() === refCode)
+        );
+
+        if (refIdx >= 0) {
+          const bonusAmount = Math.max(50, Math.round(dep.amount * 0.10));
+          this.users[refIdx].balance += bonusAmount;
+          this.users[refIdx].referralBonusEarned = (this.users[refIdx].referralBonusEarned || 0) + bonusAmount;
+          const referrer = this.users[refIdx];
+
+          referrerBonusAwarded = {
+            referrerPhone: referrer.phoneNumber,
+            referrerUsername: referrer.username,
+            newBalance: referrer.balance,
+            bonusAmount,
+            friendUsername: updatedUser.username,
+            depositAmount: dep.amount,
+          };
+          console.log(`[REFERRAL BONUS] Awarded KES ${bonusAmount} to ${referrer.username} for friend ${updatedUser.username} deposit of KES ${dep.amount}`);
+        }
+      }
     }
 
     this.broadcast('DEPOSIT_APPROVED', {
       depositId: id,
       deposit: dep,
       updatedUser,
+      referrerBonusAwarded,
     });
-    return { deposit: dep, updatedUser };
+
+    if (referrerBonusAwarded) {
+      this.broadcast('REFERRAL_BONUS_AWARDED', referrerBonusAwarded);
+    }
+
+    return { deposit: dep, updatedUser, referrerBonusAwarded };
   }
 
   rejectDeposit(id) {
@@ -272,9 +342,9 @@ export function setupApiRoutes(app) {
     });
   });
 
-  // 3. User Registration (Cross-device authoritative register)
+  // 3. User Registration (Cross-device authoritative register with referral support)
   app.post('/api/auth/register', (req, res) => {
-    const { phoneNumber, username, password } = req.body || {};
+    const { phoneNumber, username, password, referredBy } = req.body || {};
     const cleanPhone = (phoneNumber || '').trim();
 
     if (!cleanPhone || cleanPhone.length < 9) {
@@ -298,10 +368,11 @@ export function setupApiRoutes(app) {
       totalDepositedDemo: 0,
       totalWithdrawnDemo: 0,
       device,
+      referredBy: (referredBy || '').trim().toUpperCase() || undefined,
     };
 
-    const result = realtimeStore.registerOrUpdateUser(account, password);
-    console.log(`[AUTH] New real player registered: ${cleanPhone} (${cleanUsername}) from ${device}`);
+    const result = realtimeStore.registerOrUpdateUser(account, password, referredBy);
+    console.log(`[AUTH] New real player registered: ${cleanPhone} (${cleanUsername}) from ${device}${referredBy ? ' (referred by ' + referredBy + ')' : ''}`);
     res.json({ success: true, user: result.user });
   });
 

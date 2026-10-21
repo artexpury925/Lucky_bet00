@@ -23,6 +23,10 @@ import { AuthModals } from './components/auth/AuthModals';
 import { AuthGateway } from './components/auth/AuthGateway';
 import { CashierModal } from './components/cashier/CashierModal';
 import { AdminPanel } from './components/admin/AdminPanel';
+import { PushNotificationBanner } from './components/notifications/PushNotificationBanner';
+import { NotificationDrawer } from './components/notifications/NotificationDrawer';
+import { ReferralModal } from './components/referral/ReferralModal';
+import { notificationService } from './utils/notificationService';
 import { soundEngine } from './utils/soundEngine';
 import { generateCrashPoint, sha256, getCurrentHourMood, getMoodDetails } from './utils/provablyFair';
 import { realtimeClient } from './utils/realtimeClient';
@@ -46,6 +50,9 @@ import {
   ArrowUpRight,
   ArrowDownLeft,
   LogOut,
+  Gift,
+  Bell,
+  Sparkles,
 } from 'lucide-react';
 
 // Default initial matches
@@ -253,6 +260,11 @@ export default function App() {
   const [cashierTab, setCashierTab] = useState<'deposit' | 'withdraw' | 'history'>('deposit');
   const [isAdminOpen, setIsAdminOpen] = useState<boolean>(false);
   const [isRulesOpen, setIsRulesOpen] = useState<boolean>(false);
+  const [isReferralOpen, setIsReferralOpen] = useState<boolean>(false);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState<boolean>(false);
+  const [activePushNotification, setActivePushNotification] = useState<any>(null);
+  const [notificationHistory, setNotificationHistory] = useState<any[]>(() => notificationService.getHistory());
+  const adminClickCounterRef = useRef<number>(0);
 
   const handleOpenDeposit = () => {
     soundEngine.playClick();
@@ -461,11 +473,42 @@ export default function App() {
         }
       }
 
-      if (event.type === 'DEPOSIT_APPROVED' && event.data?.updatedUser) {
-        const u = event.data.updatedUser;
+      if (event.type === 'DEPOSIT_APPROVED') {
+        const u = event.data?.updatedUser;
+        const dep = event.data?.deposit;
+        if (u) {
+          setUser(curr => {
+            if (curr.phoneNumber === u.phoneNumber) {
+              if (dep) {
+                notificationService.notifyDepositApproved(dep.amount, dep.code);
+              }
+              return { ...curr, balance: u.balance, totalDepositedDemo: u.totalDepositedDemo };
+            }
+            return curr;
+          });
+        }
+      }
+
+      if (event.type === 'REFERRAL_BONUS_AWARDED' && event.data) {
+        const data = event.data;
         setUser(curr => {
-          if (curr.phoneNumber === u.phoneNumber) {
-            return { ...curr, balance: u.balance, totalDepositedDemo: u.totalDepositedDemo };
+          if (curr.phoneNumber === data.referrerPhone) {
+            recordTransaction(
+              'REFERRAL_BONUS',
+              data.bonusAmount,
+              `Referral Cash Bonus: Friend @${data.friendUsername} deposit (+${data.bonusAmount} KES)`,
+              data.newBalance
+            );
+            notificationService.notifyReferralBonus(
+              data.friendUsername,
+              data.bonusAmount,
+              data.depositAmount
+            );
+            return {
+              ...curr,
+              balance: data.newBalance,
+              referralBonusEarned: (curr.referralBonusEarned || 0) + data.bonusAmount,
+            };
           }
           return curr;
         });
@@ -484,12 +527,31 @@ export default function App() {
     };
   }, []);
 
+  // Subscribe to Notification Service
+  useEffect(() => {
+    const unsub = notificationService.subscribe(notif => {
+      setActivePushNotification(notif);
+      setNotificationHistory(notificationService.getHistory());
+    });
+    return unsub;
+  }, []);
+
+  // Periodic mock major tournament push notification alerts (Champions League, Premier League, Derbies)
+  useEffect(() => {
+    // Fire periodic tournament match alert every 2.5 minutes
+    const matchAlertTimer = setInterval(() => {
+      notificationService.notifyMatchStarting();
+    }, 150000);
+    return () => clearInterval(matchAlertTimer);
+  }, []);
+
   // Audio mute sync
   useEffect(() => {
     soundEngine.setMuted(isMuted);
   }, [isMuted]);
 
-  // Hidden Admin access via <link>/admin-login or #admin-login or ?admin-login
+  // Administrator-Only Access (Protected & Hidden from ordinary users)
+  // Accessible ONLY via URL (?admin=true, #admin, /admin-login) or secret shortcut (Ctrl+Alt+A)
   useEffect(() => {
     const checkRoute = () => {
       const path = window.location.pathname.toLowerCase();
@@ -499,7 +561,10 @@ export default function App() {
         path.includes('/admin-login') ||
         path.endsWith('admin-login') ||
         hash.includes('admin-login') ||
-        search.includes('admin-login')
+        hash.includes('#admin') ||
+        search.includes('admin-login') ||
+        search.includes('admin=true') ||
+        search.includes('admin=1')
       ) {
         setIsAdminOpen(true);
       }
@@ -507,9 +572,21 @@ export default function App() {
     checkRoute();
     window.addEventListener('popstate', checkRoute);
     window.addEventListener('hashchange', checkRoute);
+
+    // Discrete administrator keyboard shortcut: Ctrl+Alt+A or Shift+Alt+A
+    const handleAdminKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey || e.shiftKey) && e.altKey && (e.key === 'a' || e.key === 'A')) {
+        e.preventDefault();
+        soundEngine.playClick();
+        setIsAdminOpen(true);
+      }
+    };
+    window.addEventListener('keydown', handleAdminKey);
+
     return () => {
       window.removeEventListener('popstate', checkRoute);
       window.removeEventListener('hashchange', checkRoute);
+      window.removeEventListener('keydown', handleAdminKey);
     };
   }, []);
 
@@ -567,6 +644,7 @@ export default function App() {
     realtimeClient.approveDeposit(id);
 
     if (deposit.phoneNumber === user.phoneNumber) {
+      notificationService.notifyDepositApproved(deposit.amount, deposit.code);
       setUser(prev => {
         const newBal = prev.balance + deposit.amount;
         recordTransaction(
@@ -648,6 +726,18 @@ export default function App() {
         totalWithdrawnDemo: prev.totalWithdrawnDemo + amount,
       };
     });
+  };
+
+  const handleNotificationAction = (payload?: any) => {
+    if (!payload) return;
+    if (payload.type === 'OPEN_CASHIER') {
+      handleOpenDeposit();
+    } else if (payload.type === 'OPEN_REFERRAL') {
+      setIsReferralOpen(true);
+    } else if (payload.type === 'OPEN_SPORTS') {
+      setActiveTab('sports');
+      window.scrollTo({ top: 380, behavior: 'smooth' });
+    }
   };
 
   // Generate simulated players for each flight round
@@ -1073,7 +1163,6 @@ export default function App() {
       <>
         <AuthGateway
           onSuccess={handleAuthSuccess}
-          onOpenAdmin={() => setIsAdminOpen(true)}
         />
         <AdminPanel
           isOpen={isAdminOpen}
@@ -1236,18 +1325,36 @@ export default function App() {
               <span>WITHDRAW</span>
             </button>
 
-            {/* Admin Portal Quick Button */}
+            {/* Invite Friends / Referral System */}
             <button
               type="button"
               onClick={() => {
                 soundEngine.playClick();
-                setIsAdminOpen(true);
+                setIsReferralOpen(true);
               }}
-              title="Open Admin Management Panel (KENYA@254)"
-              className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-amber-500/40 text-amber-400 transition-colors cursor-pointer flex items-center space-x-1 text-xs"
+              title="Invite Friends & Earn 10% Cash Bonus on Every Deposit"
+              className="px-2.5 sm:px-3 py-2 rounded-xl bg-gradient-to-r from-amber-500/20 via-orange-500/15 to-amber-500/10 hover:from-amber-500/30 hover:to-orange-500/25 border border-amber-500/40 text-amber-300 transition-all cursor-pointer flex items-center space-x-1.5 text-xs font-bold font-display shadow-sm active:scale-95"
             >
-              <ShieldCheck className="w-4 h-4 text-amber-400" />
-              <span className="hidden xl:inline font-bold font-mono text-[11px]">Admin</span>
+              <Gift className="w-4 h-4 text-amber-400" />
+              <span className="hidden md:inline">Refer &amp; Earn</span>
+            </button>
+
+            {/* Notification Center Bell */}
+            <button
+              type="button"
+              onClick={() => {
+                soundEngine.playClick();
+                setIsNotificationsOpen(true);
+              }}
+              title="Notifications & Match Alerts"
+              className="relative p-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white transition-colors cursor-pointer"
+            >
+              <Bell className="w-4 h-4 text-amber-400" />
+              {notificationHistory.filter(n => !n.read).length > 0 && (
+                <span className="absolute -top-1 -right-1 flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-black font-mono">
+                  {notificationHistory.filter(n => !n.read).length}
+                </span>
+              )}
             </button>
 
             {/* User Profile / Switch Account */}
@@ -1437,28 +1544,70 @@ export default function App() {
       <footer className="mt-auto border-t border-slate-800/80 bg-[#090c12] py-6 px-4 text-xs text-slate-500">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center space-x-2">
-            <span className="font-display font-extrabold text-slate-300">LUCKY BET</span>
-            <span>• Sports Betting & Aviator Crash Arena</span>
+            <span
+              onClick={() => {
+                adminClickCounterRef.current++;
+                if (adminClickCounterRef.current >= 5) {
+                  adminClickCounterRef.current = 0;
+                  soundEngine.playClick();
+                  setIsAdminOpen(true);
+                }
+              }}
+              title="LUCKY BET KENYA"
+              className="font-display font-extrabold text-slate-300 cursor-default select-none"
+            >
+              LUCKY BET
+            </span>
+            <span>• Sports Betting &amp; Aviator Crash Arena</span>
           </div>
 
           <div className="flex items-center space-x-4">
             <button
               type="button"
+              onClick={() => {
+                soundEngine.playClick();
+                setIsReferralOpen(true);
+              }}
+              className="hover:text-amber-400 text-amber-400 font-bold transition-colors flex items-center space-x-1"
+            >
+              <Gift className="w-3.5 h-3.5 text-amber-400" />
+              <span>Refer &amp; Earn (10% Bonus)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                soundEngine.playClick();
+                setIsNotificationsOpen(true);
+              }}
+              className="hover:text-slate-300 transition-colors flex items-center space-x-1"
+            >
+              <Bell className="w-3.5 h-3.5 text-amber-400" />
+              <span>Alerts</span>
+            </button>
+            <button
+              type="button"
               onClick={() => setIsRulesOpen(true)}
               className="hover:text-slate-300 transition-colors"
             >
-              Fairness & Rules
+              Fairness &amp; Rules
             </button>
             <button
               type="button"
               onClick={() => setIsCashierOpen(true)}
               className="hover:text-slate-300 transition-colors"
             >
-              Cashier & Wallet
+              Cashier &amp; Wallet
             </button>
           </div>
         </div>
       </footer>
+
+      {/* FLOATING PUSH NOTIFICATION BANNER */}
+      <PushNotificationBanner
+        notification={activePushNotification}
+        onDismiss={() => setActivePushNotification(null)}
+        onAction={handleNotificationAction}
+      />
 
       {/* MODALS */}
       {/* 1. Auth Modals */}
@@ -1481,7 +1630,30 @@ export default function App() {
         onWithdrawFunds={handleWithdrawFunds}
       />
 
-      {/* 3. Hidden Admin Panel (Accessed via URL /admin-login) */}
+      {/* 3. Referral & Earn Modal */}
+      <ReferralModal
+        isOpen={isReferralOpen}
+        onClose={() => setIsReferralOpen(false)}
+        user={user}
+      />
+
+      {/* 4. Notification Center Drawer */}
+      <NotificationDrawer
+        isOpen={isNotificationsOpen}
+        onClose={() => setIsNotificationsOpen(false)}
+        notifications={notificationHistory}
+        onAction={handleNotificationAction}
+        onMarkAllAsRead={() => {
+          notificationService.markAllAsRead();
+          setNotificationHistory(notificationService.getHistory());
+        }}
+        onClear={() => {
+          notificationService.clearHistory();
+          setNotificationHistory([]);
+        }}
+      />
+
+      {/* 5. Hidden Admin Panel (Accessible by Administrator only via URL /admin-login, ?admin=true, or Ctrl+Alt+A) */}
       <AdminPanel
         isOpen={isAdminOpen}
         onClose={() => setIsAdminOpen(false)}
@@ -1507,7 +1679,7 @@ export default function App() {
         onRefresh={refreshLiveStatus}
       />
 
-      {/* 4. How To Play & Rules Modal */}
+      {/* 6. How To Play & Rules Modal */}
       {isRulesOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-lg w-full shadow-2xl relative text-xs text-slate-300 space-y-4">

@@ -423,9 +423,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   {/* Users Table */}
                   <div className="divide-y divide-slate-800/80">
                     <div className="grid grid-cols-12 px-3 py-2 text-[10px] uppercase font-bold text-slate-500 bg-slate-900/40 rounded-t-lg">
-                      <span className="col-span-4">User</span>
-                      <span className="col-span-3">Phone</span>
-                      <span className="col-span-3 text-right">Balance</span>
+                      <span className="col-span-4">User &amp; Device</span>
+                      <span className="col-span-3">Phone &amp; Referral</span>
+                      <span className="col-span-3 text-right">Balance &amp; Commission</span>
                       <span className="col-span-2 text-right">Actions</span>
                     </div>
 
@@ -436,19 +436,42 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           key={u.phoneNumber}
                           className="grid grid-cols-12 px-3 py-2.5 items-center hover:bg-slate-900/60 transition-colors text-xs"
                         >
-                          <div className="col-span-4 font-bold text-white truncate flex items-center space-x-1.5">
-                            <span className="truncate">{u.username}</span>
-                            {isRecent && (
-                              <span className="px-1.5 py-0.2 text-[9px] font-black uppercase bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 rounded shrink-0">
-                                NEW
-                              </span>
-                            )}
+                          <div className="col-span-4 font-bold text-white truncate">
+                            <div className="flex items-center space-x-1.5 truncate">
+                              <span className="truncate">{u.username}</span>
+                              {isRecent && (
+                                <span className="px-1.5 py-0.2 text-[9px] font-black uppercase bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 rounded shrink-0">
+                                  NEW
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-[10px] text-slate-500 font-normal block truncate">
+                              {u.device || 'Mobile / Web'}
+                            </span>
                           </div>
                           <div className="col-span-3 font-mono text-slate-400 text-[11px] truncate">
-                            {u.phoneNumber}
+                            <div>{u.phoneNumber}</div>
+                            {u.referralCode && (
+                              <div className="text-[9px] text-amber-400 font-mono">
+                                Code: {u.referralCode}
+                              </div>
+                            )}
+                            {u.referredBy && (
+                              <div className="text-[9px] text-slate-500">
+                                Ref by: {u.referredBy}
+                              </div>
+                            )}
                           </div>
                           <div className="col-span-3 text-right font-display font-extrabold text-emerald-400">
-                            {u.balance.toFixed(2)} KES
+                            <div>{u.balance.toFixed(2)} KES</div>
+                            {(u.referralBonusEarned || 0) > 0 && (
+                              <div className="text-[9px] text-amber-300 font-mono font-normal">
+                                +{(u.referralBonusEarned || 0).toFixed(0)} KES ref bonus
+                              </div>
+                            )}
+                            <div className="text-[9px] text-slate-500 font-normal">
+                              {u.referralCount || 0} friends invited
+                            </div>
                           </div>
                           <div className="col-span-2 text-right">
                             <button
@@ -459,7 +482,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                               }}
                               className="px-2 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded text-[11px] font-bold font-display cursor-pointer"
                             >
-                              + Add Funds
+                              + Funds
                             </button>
                           </div>
                         </div>

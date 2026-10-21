@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { UserAccount } from '../../types';
 import { soundEngine } from '../../utils/soundEngine';
-import { KeyRound, Phone, Lock, User, CheckCircle2, Copy, Sparkles, X } from 'lucide-react';
+import { realtimeClient } from '../../utils/realtimeClient';
+import { KeyRound, Phone, Lock, User, CheckCircle2, Copy, Sparkles, X, Gift } from 'lucide-react';
 
 interface AuthModalsProps {
   isOpen: boolean;
@@ -20,6 +21,12 @@ export const AuthModals: React.FC<AuthModalsProps> = ({
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
+  const [referralCode, setReferralCode] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('lucky_referrer_code') || '';
+    }
+    return '';
+  });
   const [recoveredPass, setRecoveredPass] = useState<string | null>(null);
   const [rememberMe, setRememberMe] = useState(true);
   const [copied, setCopied] = useState(false);
@@ -27,7 +34,7 @@ export const AuthModals: React.FC<AuthModalsProps> = ({
 
   if (!isOpen) return null;
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     soundEngine.playClick();
 
@@ -40,15 +47,32 @@ export const AuthModals: React.FC<AuthModalsProps> = ({
       return;
     }
 
-    const newAccount: UserAccount = {
+    const cleanUsername = username || `Player_${phone.slice(-4)}`;
+
+    // Sync to server
+    const serverRes = await realtimeClient.registerUser({
       phoneNumber: phone,
-      username: username || `Player_${phone.slice(-4)}`,
-      balance: 500, // 500 Free Welcome Bonus on account creation
-      joinedAt: Date.now(),
-      initialBonusClaimed: true,
-      totalDepositedDemo: 0,
-      totalWithdrawnDemo: 0,
-    };
+      username: cleanUsername,
+      password,
+      referredBy: referralCode.trim() || undefined,
+    });
+
+    let newAccount: UserAccount;
+    if (serverRes.success && serverRes.user) {
+      newAccount = serverRes.user;
+    } else {
+      newAccount = {
+        phoneNumber: phone,
+        username: cleanUsername,
+        balance: 500, // 500 Free Welcome Bonus on account creation
+        joinedAt: Date.now(),
+        initialBonusClaimed: true,
+        totalDepositedDemo: 0,
+        totalWithdrawnDemo: 0,
+        referredBy: referralCode.trim() || undefined,
+      };
+      realtimeClient.syncUserToServer(newAccount, password);
+    }
 
     // Store in localStorage
     localStorage.setItem(`user_${phone}`, JSON.stringify({ ...newAccount, password }));
@@ -238,18 +262,25 @@ export const AuthModals: React.FC<AuthModalsProps> = ({
             </div>
 
             <div>
-              <label className="text-xs text-slate-400 font-semibold block mb-1">
-                Password
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs text-slate-400 font-semibold flex items-center">
+                  <Gift className="w-3.5 h-3.5 mr-1 text-amber-400" />
+                  Referral Code <span className="text-slate-500 font-normal ml-1">(Optional)</span>
+                </label>
+                {referralCode && (
+                  <span className="text-[10px] text-emerald-400 font-bold font-mono">
+                    Referral Active
+                  </span>
+                )}
+              </div>
               <div className="relative">
-                <Lock className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+                <Gift className="w-4 h-4 text-amber-400 absolute left-3 top-3" />
                 <input
-                  type="password"
-                  required
-                  placeholder="Create a password"
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500"
+                  type="text"
+                  placeholder="e.g. LUCKY-7777ARN"
+                  value={referralCode}
+                  onChange={e => setReferralCode(e.target.value.toUpperCase())}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 font-mono uppercase"
                 />
               </div>
             </div>
