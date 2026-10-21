@@ -55,8 +55,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onRefresh,
 }) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [username, setUsername] = useState<string>('KENYA@254');
-  const [password, setPassword] = useState<string>('KENYA@254');
+  const [username, setUsername] = useState<string>('');
+  const [password, setPassword] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
 
   // Admin Dashboard Tabs
