@@ -538,11 +538,25 @@ export default function App() {
 
   // Periodic mock major tournament push notification alerts (Champions League, Premier League, Derbies)
   useEffect(() => {
+    // Immediate teaser notification 8 seconds after app loads
+    const initialTimer = setTimeout(() => {
+      notificationService.notifyMatchStarting({
+        teams: 'Arsenal vs Chelsea',
+        league: 'English Premier League • Big Match',
+        startsIn: '15 minutes',
+        odds: '1.95 | 3.50 | 3.80',
+      });
+    }, 8000);
+
     // Fire periodic tournament match alert every 2.5 minutes
     const matchAlertTimer = setInterval(() => {
       notificationService.notifyMatchStarting();
     }, 150000);
-    return () => clearInterval(matchAlertTimer);
+
+    return () => {
+      clearTimeout(initialTimer);
+      clearInterval(matchAlertTimer);
+    };
   }, []);
 
   // Audio mute sync
@@ -717,6 +731,14 @@ export default function App() {
   };
 
   const handleWithdrawFunds = (amount: number, description: string) => {
+    if ((user.totalDepositedDemo || 0) < 100) {
+      notificationService.notifySystem(
+        '⚠️ Deposit 100 KES to Withdraw',
+        'You must deposit at least 100 KES to verify your account and withdraw your welcome bonus.',
+        'OPEN_CASHIER'
+      );
+      return;
+    }
     setUser(prev => {
       const newBal = Math.max(0, prev.balance - amount);
       recordTransaction('WITHDRAW_DEMO', -amount, description, newBal);
@@ -1395,16 +1417,30 @@ export default function App() {
               <Trophy className="w-5 h-5" />
             </div>
             <div>
-              <div className="flex items-center justify-center sm:justify-start space-x-2">
+              <div className="flex items-center justify-center sm:justify-start space-x-2 flex-wrap gap-y-1">
                 <span className="text-sm sm:text-base font-extrabold text-white font-display">
                   500 KES Welcome Bonus Credited!
                 </span>
-                <span className="bg-amber-500 text-slate-950 font-black text-[10px] px-2 py-0.2 rounded-full uppercase">
-                  Active
-                </span>
+                {(user.totalDepositedDemo || 0) < 100 ? (
+                  <span className="bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-black text-[10px] px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1 shadow-sm">
+                    🔒 Deposit 100 KES to Withdraw
+                  </span>
+                ) : (
+                  <span className="bg-emerald-500 text-slate-950 font-black text-[10px] px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1 shadow-sm">
+                    ✓ Withdrawal Unlocked
+                  </span>
+                )}
               </div>
               <p className="text-xs text-slate-300 mt-0.5">
-                Play real-time Aviator rounds with cashout controls, or place football accumulator multi-bets with bonus boosts.
+                {(user.totalDepositedDemo || 0) < 100 ? (
+                  <span>
+                    To withdraw your welcome bonus & winnings to M-PESA, deposit a minimum of <strong className="text-amber-400 font-bold">100 KES</strong> to verify your account (Progress: {(user.totalDepositedDemo || 0).toFixed(0)}/100 KES).
+                  </span>
+                ) : (
+                  <span>
+                    Account verified! You can withdraw your welcome bonus, referral commissions, and winnings freely to M-PESA.
+                  </span>
+                )}
               </p>
             </div>
           </div>
@@ -1715,9 +1751,9 @@ export default function App() {
               </div>
 
               <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                <span className="font-bold text-white block mb-1">💼 Welcome Wallet & Cashier:</span>
+                <span className="font-bold text-white block mb-1">💼 500 KES Welcome Bonus & Withdrawals:</span>
                 <p>
-                  All accounts start with 500 KES free welcome credits. You can manage deposits and withdrawals at any time via the Cashier.
+                  Every new player receives a <strong>500 KES Welcome Bonus</strong> on signup. To withdraw the welcome bonus, referral rewards, and associated winnings to M-PESA, you must first deposit a minimum of <strong>100 KES</strong> to verify your account.
                 </p>
               </div>
             </div>

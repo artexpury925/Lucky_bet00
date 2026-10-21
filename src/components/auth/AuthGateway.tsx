@@ -292,7 +292,7 @@ export const AuthGateway: React.FC<AuthGatewayProps> = ({ onSuccess }) => {
             <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-3 text-left col-span-2 sm:col-span-1">
               <Shield className="w-5 h-5 text-emerald-400 mb-1.5" />
               <div className="text-xs font-bold text-white">Live Cross-Device</div>
-              <div className="text-[10px] text-slate-400">Admin live sync</div>
+              <div className="text-[10px] text-slate-400">Instant cloud sync</div>
             </div>
           </div>
         </div>

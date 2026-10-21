@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { UserAccount, WalletTransaction } from '../../types';
 import { soundEngine } from '../../utils/soundEngine';
-import { Wallet, ArrowDownLeft, ArrowUpRight, History, CheckCircle2, ShieldCheck, X, Sparkles, Clock } from 'lucide-react';
+import { Wallet, ArrowDownLeft, ArrowUpRight, History, CheckCircle2, ShieldCheck, X, Sparkles, Clock, Lock } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 interface CashierModalProps {
@@ -40,6 +40,16 @@ export const CashierModal: React.FC<CashierModalProps> = ({
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // Requirement: Deposit KES 100 to withdraw welcome bonus
+  const totalDeposited = Math.max(
+    user.totalDepositedDemo || 0,
+    transactions
+      .filter(t => t.type === 'DEPOSIT_DEMO' || (t.amount > 0 && (t.description?.toLowerCase().includes('deposit') || t.description?.toLowerCase().includes('top up'))))
+      .reduce((sum, t) => sum + Math.abs(t.amount), 0)
+  );
+  const isWithdrawalLocked = totalDeposited < 100;
+  const depositRemaining = Math.max(0, 100 - totalDeposited);
+
   if (!isOpen) return null;
 
   const handleDepositSubmit = (e: React.FormEvent) => {
@@ -66,6 +76,11 @@ export const CashierModal: React.FC<CashierModalProps> = ({
   const handleWithdrawSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     soundEngine.playClick();
+
+    if (isWithdrawalLocked) {
+      setErrorMessage(`Withdrawal Locked: You must deposit at least 100 KES to withdraw your welcome bonus and winnings. (Current deposits: ${totalDeposited.toFixed(2)} / 100 KES)`);
+      return;
+    }
 
     if (withdrawAmount < 100) {
       setErrorMessage('Minimum withdrawal amount is 100 KES');
@@ -257,6 +272,73 @@ export const CashierModal: React.FC<CashierModalProps> = ({
           {/* WITHDRAW TAB */}
           {activeTab === 'withdraw' && (
             <form onSubmit={handleWithdrawSubmit} className="space-y-4">
+              {/* Requirement Card for Welcome Bonus Withdrawal */}
+              {isWithdrawalLocked ? (
+                <div className="bg-gradient-to-br from-amber-950/80 via-slate-950 to-slate-950 border border-amber-500/50 rounded-2xl p-4 space-y-3 shadow-xl">
+                  <div className="flex items-start space-x-3">
+                    <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center shrink-0 text-amber-400">
+                      <Lock className="w-5 h-5 text-amber-400" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center space-x-2">
+                        <span className="text-[10px] font-black uppercase font-mono px-2 py-0.5 rounded bg-amber-500 text-slate-950">
+                          Withdrawal Locked
+                        </span>
+                        <span className="text-[11px] text-amber-300 font-bold">
+                          Welcome Bonus Rule
+                        </span>
+                      </div>
+                      <h4 className="text-sm font-black font-display text-white mt-1 leading-tight">
+                        Deposit 100 KES to Unlock Withdrawals
+                      </h4>
+                      <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                        To withdraw your <strong className="text-amber-400">500 KES welcome bonus</strong> and winnings to M-PESA, you must first deposit a minimum of <strong className="text-white">100 KES</strong> to verify your account.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Progress Bar */}
+                  <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-1.5">
+                    <div className="flex justify-between text-xs font-mono">
+                      <span className="text-slate-400">Deposit Progress:</span>
+                      <span className="text-amber-400 font-bold">
+                        {totalDeposited.toFixed(2)} / 100.00 KES ({depositRemaining.toFixed(2)} KES remaining)
+                      </span>
+                    </div>
+                    <div className="w-full bg-slate-900 rounded-full h-2.5 overflow-hidden border border-slate-800">
+                      <div
+                        className="h-full bg-gradient-to-r from-amber-500 via-orange-500 to-emerald-500 transition-all duration-500"
+                        style={{ width: `${Math.min(100, Math.round((totalDeposited / 100) * 100))}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* One-click Action to Deposit */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playClick();
+                      setDepositAmount(100);
+                      setErrorMessage(null);
+                      setActiveTab('deposit');
+                    }}
+                    className="w-full py-2.5 px-4 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-400 active:scale-95 text-white font-black text-xs uppercase font-display rounded-xl shadow-md flex items-center justify-center space-x-2 transition-all cursor-pointer"
+                  >
+                    <ArrowDownLeft className="w-4 h-4" />
+                    <span>Deposit 100 KES Now to Unlock</span>
+                    <ArrowRight className="w-4 h-4 ml-1" />
+                  </button>
+                </div>
+              ) : (
+                <div className="bg-emerald-950/40 border border-emerald-500/40 p-3 rounded-xl flex items-center space-x-2.5 text-xs text-emerald-300 animate-fadeIn">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                  <div>
+                    <span className="font-bold text-white block">Withdrawal Unlocked</span>
+                    Minimum deposit requirement satisfied ({totalDeposited.toFixed(2)} KES deposited). You can withdraw your balance freely.
+                  </div>
+                </div>
+              )}
+
               <div>
                 <div className="flex justify-between text-xs mb-1">
                   <label className="text-slate-300 font-semibold">Withdrawal Amount</label>
@@ -331,13 +413,29 @@ export const CashierModal: React.FC<CashierModalProps> = ({
                 </div>
               </div>
 
-              <button
-                type="submit"
-                disabled={user.balance < 100 || withdrawAmount > user.balance}
-                className="w-full py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 font-display font-extrabold text-sm uppercase tracking-wider text-slate-950 rounded-xl shadow-lg shadow-amber-950/40 transition-all cursor-pointer disabled:opacity-40"
-              >
-                REQUEST WITHDRAWAL
-              </button>
+              {isWithdrawalLocked ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    soundEngine.playClick();
+                    setDepositAmount(100);
+                    setErrorMessage(null);
+                    setActiveTab('deposit');
+                  }}
+                  className="w-full py-3.5 bg-gradient-to-r from-amber-600 via-orange-600 to-amber-500 hover:from-amber-500 hover:to-orange-500 font-display font-black text-sm uppercase tracking-wider text-slate-950 rounded-xl shadow-lg transition-all cursor-pointer flex items-center justify-center space-x-2 active:scale-98"
+                >
+                  <Lock className="w-4 h-4" />
+                  <span>DEPOSIT 100 KES TO UNLOCK WITHDRAWAL</span>
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={user.balance < 100 || withdrawAmount > user.balance}
+                  className="w-full py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 font-display font-extrabold text-sm uppercase tracking-wider text-slate-950 rounded-xl shadow-lg shadow-amber-950/40 transition-all cursor-pointer disabled:opacity-40"
+                >
+                  REQUEST WITHDRAWAL
+                </button>
+              )}
             </form>
           )}
 
