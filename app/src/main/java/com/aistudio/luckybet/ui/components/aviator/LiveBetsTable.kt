@@ -52,7 +52,7 @@ fun LiveBetsTable(
     myHistory: List<MyFlightRecord>,
     modifier: Modifier = Modifier
 ) {
-    var activeTab by remember { mutableStateOf<"all" | "my">("all") }
+    var activeTab by remember { mutableStateOf("all") }
 
     Column(
         modifier = modifier

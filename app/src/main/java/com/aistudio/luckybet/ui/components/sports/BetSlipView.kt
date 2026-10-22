@@ -62,7 +62,7 @@ fun BetSlipView(
     modifier: Modifier = Modifier
 ) {
     var stake by remember { mutableDoubleStateOf(100.0) }
-    var activeTab by remember { mutableStateOf<"slip" | "history">("slip") }
+    var activeTab by remember { mutableStateOf("slip") }
 
     val totalOdds = if (selections.isEmpty()) 1.0 else {
         var prod = 1.0

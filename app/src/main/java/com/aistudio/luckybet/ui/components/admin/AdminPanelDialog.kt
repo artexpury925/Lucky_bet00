@@ -85,7 +85,7 @@ fun AdminPanelDialog(
     var username by remember { mutableStateOf("KENYA@254") }
     var password by remember { mutableStateOf("KENYA@254") }
     var errorMsg by remember { mutableStateOf<String?>(null) }
-    var adminTab by remember { mutableStateOf<"deposits" | "users" | "flight">("deposits") }
+    var adminTab by remember { mutableStateOf("deposits") }
     var userCreditSuccess by remember { mutableStateOf<String?>(null) }
 
     Dialog(onDismissRequest = onClose) {

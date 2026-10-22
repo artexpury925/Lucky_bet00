@@ -1,7 +1,19 @@
 import React, { useState } from 'react';
 import { FootballMatch, SlipSelection } from '../../types';
 import { soundEngine } from '../../utils/soundEngine';
-import { Flame, Clock, Radio, Trophy, ArrowUp, ArrowDown } from 'lucide-react';
+import {
+  Flame,
+  Clock,
+  Radio,
+  Trophy,
+  ArrowUp,
+  ArrowDown,
+  Activity,
+  ChevronDown,
+  ChevronUp,
+  Sparkles,
+  Zap,
+} from 'lucide-react';
 
 interface SportsBettingProps {
   matches: FootballMatch[];
@@ -15,6 +27,7 @@ export const SportsBetting: React.FC<SportsBettingProps> = ({
   onToggleSelection,
 }) => {
   const [activeCategory, setActiveCategory] = useState<string>('ALL');
+  const [expandedRadarId, setExpandedRadarId] = useState<string | null>(null);
 
   const categories = [
     { id: 'ALL', label: 'All Fixtures', icon: Trophy },
@@ -48,6 +61,15 @@ export const SportsBetting: React.FC<SportsBettingProps> = ({
     });
   };
 
+  // Same-game multi / Bet builder helper
+  const handleAddBetBuilder = (match: FootballMatch) => {
+    soundEngine.playClick();
+    // Add 1X2 + Over 2.5 + Both To Score for high odds accumulator
+    handlePick(match, '1X2', '1 (Home Win)', match.odds.home);
+    handlePick(match, 'Totals', 'Over 2.5', match.odds.over25);
+    handlePick(match, 'GG/NG', 'GG (Both Score)', match.odds.bothToScoreYes);
+  };
+
   return (
     <div className="space-y-4">
       {/* Category Pills Strip */}
@@ -66,7 +88,7 @@ export const SportsBetting: React.FC<SportsBettingProps> = ({
               }}
               className={`shrink-0 px-3.5 py-2 rounded-xl text-xs font-bold font-display uppercase tracking-wider flex items-center space-x-1.5 transition-all cursor-pointer ${
                 isActive
-                  ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/20'
+                  ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/20 font-black'
                   : 'bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
               }`}
             >
@@ -88,34 +110,54 @@ export const SportsBetting: React.FC<SportsBettingProps> = ({
       <div className="space-y-3">
         {filteredMatches.map(match => {
           const isLive = match.status === 'LIVE';
+          const isRadarOpen = expandedRadarId === match.id;
 
           return (
             <div
               key={match.id}
               className="bg-slate-900/90 border border-slate-800/90 hover:border-slate-700 rounded-xl p-3 sm:p-4 shadow-xl transition-all"
             >
-              {/* Header: League & Status */}
+              {/* Header: League, Status & Live Radar Toggle */}
               <div className="flex items-center justify-between text-xs mb-2 pb-2 border-b border-slate-800/60">
                 <span className="font-semibold text-slate-400 uppercase tracking-wider">
                   {match.league}
                 </span>
 
-                {isLive ? (
-                  <div className="flex items-center space-x-2">
-                    <span className="flex items-center space-x-1 text-red-400 font-bold bg-red-950/40 border border-red-500/40 px-2 py-0.5 rounded-full text-[11px] animate-pulse">
-                      <span className="w-2 h-2 rounded-full bg-red-500"></span>
-                      <span>LIVE</span>
+                <div className="flex items-center space-x-2">
+                  {isLive ? (
+                    <div className="flex items-center space-x-2">
+                      <span className="flex items-center space-x-1 text-red-400 font-bold bg-red-950/40 border border-red-500/40 px-2 py-0.5 rounded-full text-[11px] animate-pulse">
+                        <span className="w-2 h-2 rounded-full bg-red-500"></span>
+                        <span>LIVE</span>
+                      </span>
+                      <span className="font-display font-bold text-amber-400 flex items-center space-x-1">
+                        <Clock className="w-3 h-3" />
+                        <span>{match.minute}'</span>
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="text-slate-500 font-display font-medium">
+                      {match.startTime}
                     </span>
-                    <span className="font-display font-bold text-amber-400 flex items-center space-x-1">
-                      <Clock className="w-3 h-3" />
-                      <span>{match.minute}'</span>
-                    </span>
-                  </div>
-                ) : (
-                  <span className="text-slate-500 font-display font-medium">
-                    {match.startTime}
-                  </span>
-                )}
+                  )}
+
+                  {/* Live Pitch Radar Toggle Button */}
+                  {isLive && (
+                    <button
+                      type="button"
+                      onClick={() => setExpandedRadarId(isRadarOpen ? null : match.id)}
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-bold font-mono uppercase flex items-center space-x-1 border transition-colors ${
+                        isRadarOpen
+                          ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+                          : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white'
+                      }`}
+                    >
+                      <Activity className="w-3 h-3 text-emerald-400 animate-pulse" />
+                      <span>{isRadarOpen ? 'Hide Radar' : 'Live Radar'}</span>
+                      {isRadarOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Match Teams & Live Score */}
@@ -143,6 +185,40 @@ export const SportsBetting: React.FC<SportsBettingProps> = ({
                   </div>
                 </div>
               </div>
+
+              {/* EXPANDABLE LIVE MATCH RADAR & STATS VISUALIZER */}
+              {isLive && isRadarOpen && (
+                <div className="my-3 p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-3 animate-fadeIn">
+                  {/* Miniature Pitch Event Visualizer */}
+                  <div className="relative w-full h-24 bg-gradient-to-r from-emerald-950 via-green-950 to-emerald-950 rounded-lg border border-emerald-500/30 overflow-hidden flex items-center justify-center">
+                    <div className="absolute inset-y-0 left-1/2 w-[1px] bg-white/20" />
+                    <div className="absolute w-12 h-12 rounded-full border border-white/20" />
+                    <div className="relative z-10 flex flex-col items-center text-center space-y-1">
+                      <div className="flex items-center space-x-1.5 text-xs font-bold text-amber-300 bg-black/60 px-2.5 py-0.5 rounded-full border border-amber-500/40 animate-pulse">
+                        <Zap className="w-3.5 h-3.5 text-amber-400" />
+                        <span>⚡ {match.minute}' Dangerous Attack - {match.homeTeam} Pressing Box!</span>
+                      </div>
+                      <span className="text-[10px] text-slate-300 font-mono">Ball in final third • 3 shots on target</span>
+                    </div>
+                  </div>
+
+                  {/* Match Stats Bars */}
+                  <div className="grid grid-cols-3 gap-2 text-[11px] text-slate-300 pt-1">
+                    <div className="bg-slate-900 p-2 rounded-lg border border-slate-800 text-center">
+                      <span className="text-slate-400 block text-[9px] uppercase font-mono">Possession</span>
+                      <span className="font-bold font-mono text-white">58% - 42%</span>
+                    </div>
+                    <div className="bg-slate-900 p-2 rounded-lg border border-slate-800 text-center">
+                      <span className="text-slate-400 block text-[9px] uppercase font-mono">Shots on Target</span>
+                      <span className="font-bold font-mono text-amber-400">6 - 3</span>
+                    </div>
+                    <div className="bg-slate-900 p-2 rounded-lg border border-slate-800 text-center">
+                      <span className="text-slate-400 block text-[9px] uppercase font-mono">Corner Kicks</span>
+                      <span className="font-bold font-mono text-emerald-400">5 - 2</span>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Primary 1 X 2 Markets */}
               <div className="grid grid-cols-3 gap-2 mt-3 pt-2 border-t border-slate-800/60">
@@ -241,6 +317,21 @@ export const SportsBetting: React.FC<SportsBettingProps> = ({
                 >
                   <span>NG</span>
                   <span className="font-bold">{match.odds.bothToScoreNo.toFixed(2)}</span>
+                </button>
+              </div>
+
+              {/* Bet Builder / Same-Game Multi Quick Shortcut */}
+              <div className="mt-2.5 pt-2 border-t border-slate-800/50 flex items-center justify-between">
+                <span className="text-[11px] text-slate-400 flex items-center space-x-1">
+                  <Sparkles className="w-3 h-3 text-amber-400" />
+                  <span>Bet Builder (Same-Game Multi):</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleAddBetBuilder(match)}
+                  className="px-2.5 py-1 bg-slate-950 hover:bg-slate-800 text-amber-400 border border-slate-800 hover:border-amber-500/40 rounded-lg text-[10px] font-bold font-display uppercase tracking-wider transition-colors cursor-pointer"
+                >
+                  ⚡ +Add Same-Game Treble
                 </button>
               </div>
             </div>

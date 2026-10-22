@@ -101,6 +101,9 @@ export interface WalletTransaction {
     | 'PENALTY_WIN'
     | 'SPIN_WIN'
     | 'RAIN_CLAIM'
+    | 'JACKPOT_BET'
+    | 'JACKPOT_WIN'
+    | 'CASHBACK_CLAIM'
     | 'PENDING_DEPOSIT'
     | 'REFERRAL_BONUS';
   amount: number;
@@ -135,12 +138,21 @@ export interface PushNotificationItem {
   read: boolean;
   actionLabel?: string;
   actionPayload?: {
-    type: 'OPEN_CASHIER' | 'OPEN_SPORTS' | 'OPEN_REFERRAL' | 'VIEW_MATCH' | 'OPEN_MINES' | 'OPEN_PENALTY' | 'OPEN_SPIN';
+    type:
+      | 'OPEN_CASHIER'
+      | 'OPEN_SPORTS'
+      | 'OPEN_REFERRAL'
+      | 'VIEW_MATCH'
+      | 'OPEN_MINES'
+      | 'OPEN_PENALTY'
+      | 'OPEN_SPIN'
+      | 'OPEN_JACKPOT'
+      | 'OPEN_VIP';
     matchId?: string;
   };
 }
 
-export type MainNavTab = 'aviator' | 'sports' | 'mines' | 'penalty' | 'leaderboard';
+export type MainNavTab = 'aviator' | 'sports' | 'jackpot' | 'mines' | 'penalty' | 'vip' | 'leaderboard';
 
 export interface ChatMessage {
   id: string;

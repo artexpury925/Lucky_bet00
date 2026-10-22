@@ -19,6 +19,15 @@ import { FlightHistory } from './components/aviator/FlightHistory';
 import { LiveBetsTable } from './components/aviator/LiveBetsTable';
 import { SportsBetting } from './components/sports/SportsBetting';
 import { BetSlip } from './components/sports/BetSlip';
+import { MinesGame } from './components/casino/MinesGame';
+import { PenaltyShootout } from './components/casino/PenaltyShootout';
+import { DailySpinWheelModal } from './components/spin/DailySpinWheelModal';
+import { LiveCommunityChat } from './components/chat/LiveCommunityChat';
+import { LeaderboardView } from './components/leaderboard/LeaderboardView';
+import { ProvablyFairModal } from './components/provablyFair/ProvablyFairModal';
+import { MegaJackpot } from './components/jackpot/MegaJackpot';
+import { VipClubView } from './components/vip/VipClubView';
+import { ResponsibleGamingModal } from './components/responsible/ResponsibleGamingModal';
 import { AuthModals } from './components/auth/AuthModals';
 import { AuthGateway } from './components/auth/AuthGateway';
 import { CashierModal } from './components/cashier/CashierModal';
@@ -53,6 +62,11 @@ import {
   Gift,
   Bell,
   Sparkles,
+  Bomb,
+  MessageSquare,
+  RotateCw,
+  Crown,
+  ShieldAlert,
 } from 'lucide-react';
 
 // Default initial matches
@@ -173,7 +187,7 @@ const INITIAL_HISTORY: AviatorHistoryItem[] = [
 
 export default function App() {
   // Navigation View
-  const [activeTab, setActiveTab] = useState<'aviator' | 'sports'>('aviator');
+  const [activeTab, setActiveTab] = useState<MainNavTab>('aviator');
 
   // Theme & Audio
   const [theme, setTheme] = useState<AviatorTheme>('classic-red');
@@ -261,6 +275,10 @@ export default function App() {
   const [isAdminOpen, setIsAdminOpen] = useState<boolean>(false);
   const [isRulesOpen, setIsRulesOpen] = useState<boolean>(false);
   const [isReferralOpen, setIsReferralOpen] = useState<boolean>(false);
+  const [isSpinOpen, setIsSpinOpen] = useState<boolean>(false);
+  const [isChatOpen, setIsChatOpen] = useState<boolean>(false);
+  const [isFairOpen, setIsFairOpen] = useState<boolean>(false);
+  const [isResponsibleOpen, setIsResponsibleOpen] = useState<boolean>(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState<boolean>(false);
   const [activePushNotification, setActivePushNotification] = useState<any>(null);
   const [notificationHistory, setNotificationHistory] = useState<any[]>(() => notificationService.getHistory());
@@ -759,7 +777,147 @@ export default function App() {
     } else if (payload.type === 'OPEN_SPORTS') {
       setActiveTab('sports');
       window.scrollTo({ top: 380, behavior: 'smooth' });
+    } else if (payload.type === 'OPEN_MINES') {
+      setActiveTab('mines');
+    } else if (payload.type === 'OPEN_PENALTY') {
+      setActiveTab('penalty');
+    } else if (payload.type === 'OPEN_SPIN') {
+      setIsSpinOpen(true);
     }
+  };
+
+  // Casino Game Handlers: Mines
+  const handleMinesBet = (amount: number, description: string): boolean => {
+    if (user.balance < amount) return false;
+    setUser(prev => {
+      const newBal = prev.balance - amount;
+      recordTransaction('MINES_BET', -amount, description, newBal);
+      return { ...prev, balance: newBal };
+    });
+    return true;
+  };
+
+  const handleMinesWin = (amount: number, description: string) => {
+    setUser(prev => {
+      const newBal = prev.balance + amount;
+      recordTransaction('MINES_WIN', amount, description, newBal);
+      return { ...prev, balance: newBal };
+    });
+  };
+
+  // Casino Game Handlers: Penalty Shootout
+  const handlePenaltyBet = (amount: number, description: string): boolean => {
+    if (user.balance < amount) return false;
+    setUser(prev => {
+      const newBal = prev.balance - amount;
+      recordTransaction('PENALTY_BET', -amount, description, newBal);
+      return { ...prev, balance: newBal };
+    });
+    return true;
+  };
+
+  const handlePenaltyWin = (amount: number, description: string) => {
+    setUser(prev => {
+      const newBal = prev.balance + amount;
+      recordTransaction('PENALTY_WIN', amount, description, newBal);
+      return { ...prev, balance: newBal };
+    });
+  };
+
+  // Daily Spin & Win Reward
+  const handleSpinReward = (amount: number, description: string) => {
+    setUser(prev => {
+      const newBal = prev.balance + amount;
+      recordTransaction('SPIN_WIN', amount, description, newBal);
+      return { ...prev, balance: newBal };
+    });
+  };
+
+  // Live Chat Rain Drop Claim
+  const handleClaimRain = (amount: number) => {
+    setUser(prev => {
+      const newBal = prev.balance + amount;
+      recordTransaction('RAIN_CLAIM', amount, `Live Chat Rain Claim (+${amount} KES)`, newBal);
+      return { ...prev, balance: newBal };
+    });
+  };
+
+  // Sports Bet Early Cash Out
+  const handleCashOutBet = (betId: string, cashoutValue: number) => {
+    setPlacedSportsBets(prev =>
+      prev.map(b => (b.id === betId ? { ...b, status: 'WON', potentialWin: cashoutValue } : b))
+    );
+    setUser(prev => {
+      const newBal = prev.balance + cashoutValue;
+      recordTransaction('SPORTS_WIN', cashoutValue, `Sports Early Cash Out (+${cashoutValue} KES)`, newBal);
+      return { ...prev, balance: newBal };
+    });
+    soundEngine.playCashout();
+    try {
+      confetti({ particleCount: 40, spread: 60, origin: { y: 0.7 } });
+    } catch {}
+  };
+
+  // Sports Load Booking Code
+  const handleLoadBookingCode = (code: string) => {
+    if (matches.length >= 3) {
+      const m1 = matches[0];
+      const m2 = matches[1];
+      const m3 = matches[2];
+      setActiveSlip([
+        {
+          matchId: m1.id,
+          matchTitle: `${m1.homeTeam} vs ${m1.awayTeam}`,
+          marketName: 'Full Time Result (1X2)',
+          outcomeName: `${m1.homeTeam} Win`,
+          odds: m1.odds.home,
+        },
+        {
+          matchId: m2.id,
+          matchTitle: `${m2.homeTeam} vs ${m2.awayTeam}`,
+          marketName: 'Over/Under 2.5 Goals',
+          outcomeName: 'Over 2.5 Goals',
+          odds: m2.odds.over25,
+        },
+        {
+          matchId: m3.id,
+          matchTitle: `${m3.homeTeam} vs ${m3.awayTeam}`,
+          marketName: 'Both Teams to Score',
+          outcomeName: 'GG (Both Score)',
+          odds: m3.odds.bothToScoreYes,
+        },
+      ]);
+      soundEngine.playClick();
+      notificationService.notifySystem('Slip Loaded!', `Booking code ${code} loaded with 3 matches into your slip.`);
+    }
+  };
+
+  // Mega Jackpot Handlers
+  const handleJackpotBet = (amount: number, description: string): boolean => {
+    if (user.balance < amount) return false;
+    setUser(prev => {
+      const newBal = prev.balance - amount;
+      recordTransaction('JACKPOT_BET', -amount, description, newBal);
+      return { ...prev, balance: newBal };
+    });
+    return true;
+  };
+
+  const handleJackpotWin = (amount: number, description: string) => {
+    setUser(prev => {
+      const newBal = prev.balance + amount;
+      recordTransaction('JACKPOT_WIN', amount, description, newBal);
+      return { ...prev, balance: newBal };
+    });
+  };
+
+  // VIP Weekly Cashback Claim Handler
+  const handleClaimCashback = (amount: number, description: string) => {
+    setUser(prev => {
+      const newBal = prev.balance + amount;
+      recordTransaction('CASHBACK_CLAIM', amount, description, newBal);
+      return { ...prev, balance: newBal };
+    });
   };
 
   // Generate simulated players for each flight round
@@ -1239,21 +1397,21 @@ export default function App() {
             </div>
           </div>
 
-          {/* Center Tabs: Aviator vs Sports */}
-          <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800/90 shadow-inner">
+          {/* Center Tabs: Aviator, Sports, Jackpot, Mines, Penalty, VIP, Leaderboard */}
+          <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800/90 shadow-inner overflow-x-auto">
             <button
               type="button"
               onClick={() => {
                 soundEngine.playClick();
                 setActiveTab('aviator');
               }}
-              className={`flex items-center space-x-1.5 px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-sm font-display font-bold uppercase tracking-wider transition-all cursor-pointer ${
+              className={`flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-display font-bold uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
                 activeTab === 'aviator'
                   ? 'bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-md'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              <Plane className="w-4 h-4 text-white" />
+              <Plane className="w-3.5 h-3.5 text-white" />
               <span>Aviator</span>
             </button>
 
@@ -1263,14 +1421,97 @@ export default function App() {
                 soundEngine.playClick();
                 setActiveTab('sports');
               }}
-              className={`flex items-center space-x-1.5 px-3 sm:px-4 py-1.5 rounded-lg text-xs sm:text-sm font-display font-bold uppercase tracking-wider transition-all cursor-pointer ${
+              className={`flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-display font-bold uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
                 activeTab === 'sports'
                   ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 shadow-md font-black'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              <Trophy className="w-4 h-4 text-amber-400" />
+              <Trophy className="w-3.5 h-3.5" />
               <span>Sports</span>
+            </button>
+
+            {/* MEGA JACKPOT TAB */}
+            <button
+              type="button"
+              onClick={() => {
+                soundEngine.playClick();
+                setActiveTab('jackpot');
+              }}
+              className={`flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-display font-bold uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
+                activeTab === 'jackpot'
+                  ? 'bg-gradient-to-r from-yellow-500 to-amber-600 text-slate-950 shadow-md font-black'
+                  : 'text-amber-400 hover:text-white'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-yellow-300 animate-pulse" />
+              <span>Jackpot</span>
+              <span className="bg-red-600 text-white text-[9px] font-mono px-1 rounded-full font-black">25M</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                soundEngine.playClick();
+                setActiveTab('mines');
+              }}
+              className={`flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-display font-bold uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
+                activeTab === 'mines'
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md font-black'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Bomb className="w-3.5 h-3.5" />
+              <span>Mines</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                soundEngine.playClick();
+                setActiveTab('penalty');
+              }}
+              className={`flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-display font-bold uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
+                activeTab === 'penalty'
+                  ? 'bg-gradient-to-r from-yellow-500 to-amber-600 text-slate-950 shadow-md font-black'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <span>🥅</span>
+              <span>Penalty</span>
+            </button>
+
+            {/* VIP CLUB TAB */}
+            <button
+              type="button"
+              onClick={() => {
+                soundEngine.playClick();
+                setActiveTab('vip');
+              }}
+              className={`flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-display font-bold uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
+                activeTab === 'vip'
+                  ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-md font-black'
+                  : 'text-purple-400 hover:text-white'
+              }`}
+            >
+              <Crown className="w-3.5 h-3.5" />
+              <span>VIP</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                soundEngine.playClick();
+                setActiveTab('leaderboard');
+              }}
+              className={`flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-display font-bold uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
+                activeTab === 'leaderboard'
+                  ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md font-black'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <span>🏅</span>
+              <span className="hidden sm:inline">Rankings</span>
             </button>
           </div>
 
@@ -1359,6 +1600,35 @@ export default function App() {
             >
               <Gift className="w-4 h-4 text-amber-400" />
               <span className="hidden md:inline">Refer &amp; Earn</span>
+            </button>
+
+            {/* Daily Lucky Spin & Win Button */}
+            <button
+              type="button"
+              onClick={() => {
+                soundEngine.playClick();
+                setIsSpinOpen(true);
+              }}
+              title="Daily Spin & Win Wheel - Free Bonus Cash"
+              className="px-2.5 sm:px-3 py-2 rounded-xl bg-gradient-to-r from-yellow-500/20 via-amber-500/20 to-orange-500/20 hover:from-yellow-500/30 hover:to-amber-500/30 border border-yellow-500/40 text-yellow-300 transition-all cursor-pointer flex items-center space-x-1.5 text-xs font-bold font-display shadow-sm active:scale-95"
+            >
+              <RotateCw className="w-4 h-4 text-yellow-400" />
+              <span className="hidden md:inline">Spin &amp; Win</span>
+            </button>
+
+            {/* Live Community Chat Toggle */}
+            <button
+              type="button"
+              onClick={() => {
+                soundEngine.playClick();
+                setIsChatOpen(!isChatOpen);
+              }}
+              title="Live Community Chat & Rain Drops"
+              className="relative p-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white transition-colors cursor-pointer flex items-center space-x-1.5 text-xs font-bold"
+            >
+              <MessageSquare className="w-4 h-4 text-emerald-400" />
+              <span className="hidden xl:inline">Chat</span>
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             </button>
 
             {/* Notification Center Bell */}
@@ -1482,8 +1752,21 @@ export default function App() {
                 <FlightHistory history={history} />
               </div>
 
-              {/* Hourly Atmosphere Badge */}
+              {/* Hourly Atmosphere Badge & Provably Fair Button */}
               <div className="flex items-center space-x-2 shrink-0 border-t sm:border-t-0 sm:border-l border-slate-800 pt-1.5 sm:pt-0 sm:pl-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    soundEngine.playClick();
+                    setIsFairOpen(true);
+                  }}
+                  className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-display font-extrabold bg-slate-950 hover:bg-slate-800 text-emerald-400 border border-emerald-500/40 shadow-sm transition-all cursor-pointer"
+                  title="Verify SHA-256 Cryptographic Hash & Multiplier Fairness"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Fairness</span>
+                </button>
+
                 <div
                   className={`flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-display font-extrabold border shadow-sm transition-all ${getMoodDetails(hourlyMood).badge}`}
                   title={`${getMoodDetails(hourlyMood).description} (Rotates in ${minutesToShift}m)`}
@@ -1569,10 +1852,57 @@ export default function App() {
                   onRemoveSelection={handleRemoveSelection}
                   onClearSlip={handleClearSlip}
                   onPlaceBet={handlePlaceSportsBet}
+                  onCashOutBet={handleCashOutBet}
+                  onLoadBookingCode={handleLoadBookingCode}
                 />
               </div>
             </div>
           </div>
+        )}
+
+        {/* VIEW 3: MINES CRASH GAME */}
+        {activeTab === 'mines' && (
+          <MinesGame
+            userBalance={user.balance}
+            onBet={handleMinesBet}
+            onWin={handleMinesWin}
+          />
+        )}
+
+        {/* VIEW 4: PENALTY SHOOTOUT */}
+        {activeTab === 'penalty' && (
+          <PenaltyShootout
+            userBalance={user.balance}
+            onBet={handlePenaltyBet}
+            onWin={handlePenaltyWin}
+          />
+        )}
+
+        {/* VIEW 5: LEADERBOARD & HALL OF FAME */}
+        {activeTab === 'leaderboard' && (
+          <LeaderboardView
+            userUsername={user.username}
+            userBalance={user.balance}
+          />
+        )}
+
+        {/* VIEW 6: MEGA JACKPOT 25,000,000 KES */}
+        {activeTab === 'jackpot' && (
+          <MegaJackpot
+            userBalance={user.balance}
+            onBet={handleJackpotBet}
+            onWin={handleJackpotWin}
+          />
+        )}
+
+        {/* VIEW 7: VIP LOYALTY CLUB & CASHBACK */}
+        {activeTab === 'vip' && (
+          <VipClubView
+            userBalance={user.balance}
+            userUsername={user.username}
+            totalDeposited={user.totalDepositedDemo || 0}
+            onClaimCashback={handleClaimCashback}
+          />
         )}
       </main>
 
@@ -1619,6 +1949,17 @@ export default function App() {
             >
               <Bell className="w-3.5 h-3.5 text-amber-400" />
               <span>Alerts</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                soundEngine.playClick();
+                setIsResponsibleOpen(true);
+              }}
+              className="hover:text-emerald-400 text-slate-400 font-semibold transition-colors flex items-center space-x-1"
+            >
+              <ShieldAlert className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Responsible Gaming</span>
             </button>
             <button
               type="button"
@@ -1768,6 +2109,36 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* 7. Daily Spin & Win Modal */}
+      <DailySpinWheelModal
+        isOpen={isSpinOpen}
+        onClose={() => setIsSpinOpen(false)}
+        onReward={handleSpinReward}
+        userBalance={user.balance}
+      />
+
+      {/* 8. Live Community Chat Drawer */}
+      <LiveCommunityChat
+        isOpen={isChatOpen}
+        onClose={() => setIsChatOpen(false)}
+        currentUsername={user.username}
+        onClaimRain={handleClaimRain}
+      />
+
+      {/* 9. Provably Fair Verifier Modal */}
+      <ProvablyFairModal
+        isOpen={isFairOpen}
+        onClose={() => setIsFairOpen(false)}
+        lastRoundHash={history[0]?.hash}
+        lastRoundMultiplier={history[0]?.multiplier}
+      />
+
+      {/* 10. Responsible Gaming & Deposit Limits Modal */}
+      <ResponsibleGamingModal
+        isOpen={isResponsibleOpen}
+        onClose={() => setIsResponsibleOpen(false)}
+      />
     </div>
   );
 }
