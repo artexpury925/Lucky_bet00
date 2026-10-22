@@ -31,28 +31,40 @@ interface JackpotFixture {
   actualResult?: '1' | 'X' | '2';
 }
 
-const INITIAL_FIXTURES: JackpotFixture[] = [
-  { id: 1, homeTeam: 'Arsenal', awayTeam: 'Chelsea', league: 'Premier League', startTime: 'Sat 17:00', pick: null },
-  { id: 2, homeTeam: 'Newcastle', awayTeam: 'Aston Villa', league: 'Premier League', startTime: 'Sat 17:00', pick: null },
-  { id: 3, homeTeam: 'Brighton', awayTeam: 'Wolves', league: 'Premier League', startTime: 'Sat 17:00', pick: null },
-  { id: 4, homeTeam: 'Gor Mahia', awayTeam: 'AFC Leopards', league: 'Kenya Premier League', startTime: 'Sat 18:00', pick: null },
-  { id: 5, homeTeam: 'Tusker FC', awayTeam: 'Bandari', league: 'Kenya Premier League', startTime: 'Sat 18:00', pick: null },
-  { id: 6, homeTeam: 'Juventus', awayTeam: 'AC Milan', league: 'Serie A', startTime: 'Sat 20:45', pick: null },
-  { id: 7, homeTeam: 'Real Madrid', awayTeam: 'Atletico Madrid', league: 'La Liga', startTime: 'Sat 22:00', pick: null },
-  { id: 8, homeTeam: 'Sevilla', awayTeam: 'Real Betis', league: 'La Liga', startTime: 'Sun 16:15', pick: null },
-  { id: 9, homeTeam: 'Dortmund', awayTeam: 'Leipzig', league: 'Bundesliga', startTime: 'Sun 17:30', pick: null },
-  { id: 10, homeTeam: 'Lyon', awayTeam: 'Marseille', league: 'Ligue 1', startTime: 'Sun 21:00', pick: null },
-  { id: 11, homeTeam: 'Man City', awayTeam: 'Liverpool', league: 'Premier League', startTime: 'Sun 18:30', pick: null },
-  { id: 12, homeTeam: 'Roma', awayTeam: 'Napoli', league: 'Serie A', startTime: 'Sun 20:45', pick: null },
-  { id: 13, homeTeam: 'Inter Milan', awayTeam: 'Lazio', league: 'Serie A', startTime: 'Sun 20:45', pick: null },
-];
+function getUpcomingWeekendFixtures(): JackpotFixture[] {
+  const now = new Date();
+  const daysUntilSat = (6 - now.getDay() + 7) % 7 || 7;
+  const saturday = new Date(now);
+  saturday.setDate(now.getDate() + daysUntilSat);
+  const satDay = saturday.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
+
+  const sunday = new Date(saturday);
+  sunday.setDate(saturday.getDate() + 1);
+  const sunDay = sunday.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
+
+  return [
+    { id: 1, homeTeam: 'Arsenal', awayTeam: 'Chelsea', league: 'Premier League', startTime: `Sat ${satDay} • 17:00`, pick: null },
+    { id: 2, homeTeam: 'Newcastle', awayTeam: 'Aston Villa', league: 'Premier League', startTime: `Sat ${satDay} • 17:00`, pick: null },
+    { id: 3, homeTeam: 'Brighton', awayTeam: 'Wolves', league: 'Premier League', startTime: `Sat ${satDay} • 17:00`, pick: null },
+    { id: 4, homeTeam: 'Gor Mahia', awayTeam: 'AFC Leopards', league: 'Kenya Premier League', startTime: `Sat ${satDay} • 18:00`, pick: null },
+    { id: 5, homeTeam: 'Tusker FC', awayTeam: 'Bandari', league: 'Kenya Premier League', startTime: `Sat ${satDay} • 18:00`, pick: null },
+    { id: 6, homeTeam: 'Juventus', awayTeam: 'AC Milan', league: 'Serie A', startTime: `Sat ${satDay} • 20:45`, pick: null },
+    { id: 7, homeTeam: 'Real Madrid', awayTeam: 'Atletico Madrid', league: 'La Liga', startTime: `Sat ${satDay} • 22:00`, pick: null },
+    { id: 8, homeTeam: 'Sevilla', awayTeam: 'Real Betis', league: 'La Liga', startTime: `Sun ${sunDay} • 16:15`, pick: null },
+    { id: 9, homeTeam: 'Dortmund', awayTeam: 'Leipzig', league: 'Bundesliga', startTime: `Sun ${sunDay} • 17:30`, pick: null },
+    { id: 10, homeTeam: 'Lyon', awayTeam: 'Marseille', league: 'Ligue 1', startTime: `Sun ${sunDay} • 21:00`, pick: null },
+    { id: 11, homeTeam: 'Man City', awayTeam: 'Liverpool', league: 'Premier League', startTime: `Sun ${sunDay} • 18:30`, pick: null },
+    { id: 12, homeTeam: 'Roma', awayTeam: 'Napoli', league: 'Serie A', startTime: `Sun ${sunDay} • 20:45`, pick: null },
+    { id: 13, homeTeam: 'Inter Milan', awayTeam: 'Lazio', league: 'Serie A', startTime: `Sun ${sunDay} • 20:45`, pick: null },
+  ];
+}
 
 export const MegaJackpot: React.FC<MegaJackpotProps> = ({
   userBalance,
   onBet,
   onWin,
 }) => {
-  const [fixtures, setFixtures] = useState<JackpotFixture[]>(INITIAL_FIXTURES);
+  const [fixtures, setFixtures] = useState<JackpotFixture[]>(() => getUpcomingWeekendFixtures());
   const [activeTab, setActiveTab] = useState<'fixtures' | 'tickets' | 'bonuses'>('fixtures');
   const [placedTickets, setPlacedTickets] = useState<
     { id: string; picks: Record<number, '1' | 'X' | '2'>; score?: number; wonAmount?: number }[]

@@ -36,6 +36,7 @@ import { PushNotificationBanner } from './components/notifications/PushNotificat
 import { NotificationDrawer } from './components/notifications/NotificationDrawer';
 import { ReferralModal } from './components/referral/ReferralModal';
 import { notificationService } from './utils/notificationService';
+import { dailyFootballService } from './utils/dailyFootballService';
 import { soundEngine } from './utils/soundEngine';
 import { generateCrashPoint, sha256, getCurrentHourMood, getMoodDetails } from './utils/provablyFair';
 import { realtimeClient } from './utils/realtimeClient';
@@ -69,109 +70,8 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 
-// Default initial matches
-const INITIAL_MATCHES: FootballMatch[] = [
-  {
-    id: 'm1',
-    league: 'Premier League',
-    homeTeam: 'Arsenal',
-    awayTeam: 'Chelsea',
-    homeScore: 1,
-    awayScore: 0,
-    minute: 68,
-    status: 'LIVE',
-    startTime: 'Live 68\'',
-    odds: {
-      home: 1.65,
-      draw: 3.80,
-      away: 5.20,
-      over25: 1.72,
-      under25: 2.10,
-      bothToScoreYes: 1.85,
-      bothToScoreNo: 1.95,
-    },
-  },
-  {
-    id: 'm2',
-    league: 'Kenya Premier League',
-    homeTeam: 'Gor Mahia',
-    awayTeam: 'AFC Leopards',
-    homeScore: 2,
-    awayScore: 1,
-    minute: 82,
-    status: 'LIVE',
-    startTime: 'Live 82\'',
-    odds: {
-      home: 1.55,
-      draw: 3.60,
-      away: 6.00,
-      over25: 1.90,
-      under25: 1.80,
-      bothToScoreYes: 1.65,
-      bothToScoreNo: 2.15,
-    },
-  },
-  {
-    id: 'm3',
-    league: 'Champions League',
-    homeTeam: 'Real Madrid',
-    awayTeam: 'Bayern Munich',
-    homeScore: 0,
-    awayScore: 0,
-    minute: 23,
-    status: 'LIVE',
-    startTime: 'Live 23\'',
-    odds: {
-      home: 2.25,
-      draw: 3.50,
-      away: 3.10,
-      over25: 1.65,
-      under25: 2.20,
-      bothToScoreYes: 1.55,
-      bothToScoreNo: 2.35,
-    },
-  },
-  {
-    id: 'm4',
-    league: 'Premier League',
-    homeTeam: 'Manchester City',
-    awayTeam: 'Liverpool',
-    homeScore: 0,
-    awayScore: 0,
-    minute: 0,
-    status: 'UPCOMING',
-    startTime: 'Today 21:00',
-    odds: {
-      home: 1.95,
-      draw: 3.75,
-      away: 3.80,
-      over25: 1.55,
-      under25: 2.45,
-      bothToScoreYes: 1.50,
-      bothToScoreNo: 2.50,
-    },
-  },
-  {
-    id: 'm5',
-    league: 'La Liga',
-    homeTeam: 'Barcelona',
-    awayTeam: 'Atletico Madrid',
-    homeScore: 0,
-    awayScore: 0,
-    minute: 0,
-    status: 'UPCOMING',
-    startTime: 'Tomorrow 20:30',
-    odds: {
-      home: 1.80,
-      draw: 3.65,
-      away: 4.40,
-      over25: 1.85,
-      under25: 1.95,
-      bothToScoreYes: 1.70,
-      bothToScoreNo: 2.10,
-    },
-  },
-];
+// Dynamic daily football matches from live schedule service
+const INITIAL_MATCHES: FootballMatch[] = dailyFootballService.getMatches();
 
 // Simulated initial history
 const INITIAL_HISTORY: AviatorHistoryItem[] = [
@@ -550,6 +450,14 @@ export default function App() {
     const unsub = notificationService.subscribe(notif => {
       setActivePushNotification(notif);
       setNotificationHistory(notificationService.getHistory());
+    });
+    return unsub;
+  }, []);
+
+  // Subscribe to Daily Real Football Service (real calendar matchdays & live in-play ticker)
+  useEffect(() => {
+    const unsub = dailyFootballService.subscribe(liveMatches => {
+      setMatches([...liveMatches]);
     });
     return unsub;
   }, []);
@@ -1839,6 +1747,8 @@ export default function App() {
                 matches={matches}
                 activeSlip={activeSlip}
                 onToggleSelection={handleToggleSelection}
+                onRefreshMatches={() => dailyFootballService.refreshMatches()}
+                lastSyncTime={dailyFootballService.getLastSyncTime()}
               />
             </div>
 

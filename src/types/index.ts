@@ -45,6 +45,23 @@ export interface FootballMatch {
   minute: number;
   status: MatchStatus;
   startTime: string;
+  matchDate?: string;
+  dayLabel?: 'LIVE' | 'TODAY' | 'TOMORROW' | 'WEEKEND';
+  countryCode?: string;
+  homeLogo?: string;
+  awayLogo?: string;
+  stats?: {
+    possessionHome: number;
+    possessionAway: number;
+    shotsOnTargetHome: number;
+    shotsOnTargetAway: number;
+    cornersHome: number;
+    cornersAway: number;
+    yellowCardsHome: number;
+    yellowCardsAway: number;
+    dangerousAttacksHome: number;
+    dangerousAttacksAway: number;
+  };
   odds: {
     home: number; // 1
     draw: number; // X
@@ -53,6 +70,15 @@ export interface FootballMatch {
     under25: number;
     bothToScoreYes: number;
     bothToScoreNo: number;
+    doubleChance1X?: number;
+    doubleChance12?: number;
+    doubleChanceX2?: number;
+    drawNoBetHome?: number;
+    drawNoBetAway?: number;
+    over15?: number;
+    under15?: number;
+    over35?: number;
+    under35?: number;
   };
 }
 
