@@ -1,13 +1,24 @@
 <resources>
     <string name="app_name">Lucky Bet</string>
+    <string name="app_subtitle">Aviator Crash Arena &amp; Live Football</string>
     <string name="tab_aviator">Aviator</string>
     <string name="tab_sports">Sports</string>
     <string name="deposit">Deposit</string>
     <string name="withdraw">Withdraw</string>
+    <string name="refer_and_earn">Refer (+20)</string>
     <string name="rules">Rules</string>
     <string name="cash_out">Cash Out</string>
     <string name="flew_away">Flew Away!</string>
     <string name="waiting_for_next_round">Waiting for next flight</string>
     <string name="place_bet">BET</string>
     <string name="cancel_bet">CANCEL BET</string>
+    <string name="welcome_bonus_title">100 KES Welcome Bonus Credited!</string>
+    <string name="welcome_bonus_locked_hint">Deposit at least 100 KES via M-PESA USSD prompt to unlock cashout of your 100 KES welcome bonus, 20 KES referral bonuses, and winnings.</string>
+    <string name="welcome_bonus_unlocked_hint">Account verified! Withdraw your balance, 100 KES welcome bonus, and 20 KES referral rewards freely to M-PESA.</string>
+    <string name="stk_push_header">Safaricom SIM Toolkit</string>
+    <string name="stk_push_subtitle">Lipa na M-PESA Online</string>
+    <string name="enter_mpesa_pin">Enter 4-Digit M-PESA PIN</string>
+    <string name="send_ussd_prompt">SEND M-PESA USSD PROMPT</string>
+    <string name="referral_program_title">Invite Friends, Earn 20 KES</string>
+    <string name="referral_program_desc">Share your referral code. Friends receive a 100 KES Welcome Bonus, and you earn an instant 20 KES cash bonus on every deposit they make!</string>
 </resources>

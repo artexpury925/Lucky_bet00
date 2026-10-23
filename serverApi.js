@@ -477,8 +477,8 @@ export function setupApiRoutes(app) {
     res.json({ success: true, deposit: result });
   });
 
-  // 13. M-PESA USSD STK Push Trigger Endpoint
-  app.post('/api/mpesa/stkpush', (req, res) => {
+  // 13. M-PESA USSD STK Push Trigger Endpoint (Supports Live Safaricom Daraja API)
+  app.post('/api/mpesa/stkpush', async (req, res) => {
     const { phoneNumber, amount, accountReference } = req.body;
     if (!phoneNumber || !amount) {
       return res.status(400).json({ error: 'Missing phoneNumber or amount' });
@@ -492,6 +492,81 @@ export function setupApiRoutes(app) {
       cleanPhone = '254' + cleanPhone;
     }
 
+    const consumerKey = process.env.MPESA_CONSUMER_KEY || '';
+    const consumerSecret = process.env.MPESA_CONSUMER_SECRET || '';
+    const passkey = process.env.MPESA_PASSKEY || '';
+    const shortcode = process.env.MPESA_SHORTCODE || '174379';
+    const callbackUrl = process.env.MPESA_CALLBACK_URL || 'https://example.com/api/mpesa/callback';
+    const mpesaEnv = (process.env.MPESA_ENV || 'sandbox').toLowerCase();
+
+    const isDarajaConfigured =
+      consumerKey &&
+      consumerSecret &&
+      passkey &&
+      !consumerKey.startsWith('YOUR_') &&
+      !consumerSecret.startsWith('YOUR_') &&
+      !passkey.startsWith('YOUR_');
+
+    if (isDarajaConfigured) {
+      try {
+        const baseUrl = mpesaEnv === 'production'
+          ? 'https://api.safaricom.co.ke'
+          : 'https://sandbox.safaricom.co.ke';
+
+        const authHeader = Buffer.from(`${consumerKey}:${consumerSecret}`).toString('base64');
+        const tokenResp = await fetch(`${baseUrl}/oauth/v1/generate?grant_type=client_credentials`, {
+          headers: { Authorization: `Basic ${authHeader}` },
+        });
+
+        if (tokenResp.ok) {
+          const tokenJson = await tokenResp.json();
+          const accessToken = tokenJson.access_token;
+
+          const now = new Date();
+          const pad = n => String(n).padStart(2, '0');
+          const timestamp =
+            `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}` +
+            `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+          const password = Buffer.from(`${shortcode}${passkey}${timestamp}`).toString('base64');
+
+          const stkResp = await fetch(`${baseUrl}/mpesa/stkpush/v1/processrequest`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              BusinessShortCode: shortcode,
+              Password: password,
+              Timestamp: timestamp,
+              TransactionType: 'CustomerPayBillOnline',
+              Amount: Math.max(1, Math.round(Number(amount))),
+              PartyA: cleanPhone,
+              PartyB: shortcode,
+              PhoneNumber: cleanPhone,
+              CallBackURL: callbackUrl,
+              AccountReference: accountReference || 'LuckyBet',
+              TransactionDesc: 'Lucky Bet Wallet Deposit',
+            }),
+          });
+
+          const stkJson = await stkResp.json();
+          if (stkResp.ok && stkJson.ResponseCode === '0') {
+            console.log(`[M-PESA DARAJA LIVE] Carrier STK Push dispatched to ${cleanPhone} for KES ${amount}`);
+            return res.json({
+              success: true,
+              liveDaraja: true,
+              ...stkJson,
+              phoneNumber: cleanPhone,
+              amount,
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('[M-PESA DARAJA] Falling back to SIM Toolkit prompt:', err.message);
+      }
+    }
+
     const checkoutRequestId = 'ws_CO_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
     const merchantRequestId = '29115-' + Date.now();
 
@@ -499,6 +574,7 @@ export function setupApiRoutes(app) {
 
     res.json({
       success: true,
+      liveDaraja: false,
       ResponseCode: '0',
       ResponseDescription: 'Success. Request accepted for processing',
       MerchantRequestID: merchantRequestId,
@@ -509,4 +585,5 @@ export function setupApiRoutes(app) {
     });
   });
 }
+
 

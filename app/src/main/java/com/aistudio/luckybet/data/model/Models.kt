@@ -102,6 +102,7 @@ data class PlacedSportsBet(
 
 enum class TransactionType {
     BONUS,
+    REFERRAL_BONUS,
     DEPOSIT_DEMO,
     WITHDRAW_DEMO,
     AVIATOR_WIN,
@@ -136,12 +137,38 @@ data class PendingDeposit(
     val status: DepositStatus = DepositStatus.PENDING
 )
 
+enum class StkPromptStatus {
+    PENDING_PIN,
+    PROCESSING,
+    ACCEPTED,
+    TIMEOUT,
+    CANCELLED
+}
+
+data class StkPushPromptState(
+    val requestId: String,
+    val phoneNumber: String,
+    val internationalPhone: String,
+    val amount: Double,
+    val paybill: String = "522522",
+    val accountReference: String = "LuckyBet",
+    val secondsRemaining: Int = 45,
+    val status: StkPromptStatus = StkPromptStatus.PENDING_PIN,
+    val liveDarajaSent: Boolean = false,
+    val darajaStatusNote: String = "Safaricom USSD Prompt Active",
+    val txRef: String? = null
+)
+
 data class UserAccount(
     val phoneNumber: String,
     val username: String,
-    val balance: Double = 500.0,
+    val balance: Double = 100.0,
     val joinedAt: Long = System.currentTimeMillis(),
     val initialBonusClaimed: Boolean = true,
     val totalDepositedDemo: Double = 0.0,
-    val totalWithdrawnDemo: Double = 0.0
+    val totalWithdrawnDemo: Double = 0.0,
+    val referralCode: String = "LUCKY-${phoneNumber.filter { it.isDigit() }.takeLast(4).ifEmpty { "2540" }}",
+    val referredBy: String? = null,
+    val referralCount: Int = 0,
+    val referralBonusEarned: Double = 0.0
 )
