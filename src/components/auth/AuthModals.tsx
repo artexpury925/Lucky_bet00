@@ -64,7 +64,7 @@ export const AuthModals: React.FC<AuthModalsProps> = ({
       newAccount = {
         phoneNumber: phone,
         username: cleanUsername,
-        balance: 500, // 500 Free Welcome Bonus on account creation
+        balance: 100, // 100 Free Welcome Bonus on account creation
         joinedAt: Date.now(),
         initialBonusClaimed: true,
         totalDepositedDemo: 0,
@@ -115,7 +115,7 @@ export const AuthModals: React.FC<AuthModalsProps> = ({
         acc = {
           phoneNumber: parsed.phoneNumber || phone,
           username: parsed.username || `Player_${phone.slice(-4)}`,
-          balance: typeof parsed.balance === 'number' ? parsed.balance : 500,
+          balance: typeof parsed.balance === 'number' ? parsed.balance : 100,
           joinedAt: parsed.joinedAt || Date.now(),
           initialBonusClaimed: parsed.initialBonusClaimed ?? true,
           totalDepositedDemo: parsed.totalDepositedDemo || 0,
@@ -125,7 +125,7 @@ export const AuthModals: React.FC<AuthModalsProps> = ({
         acc = {
           phoneNumber: phone,
           username: `Player_${phone.slice(-4)}`,
-          balance: 500,
+          balance: 100,
           joinedAt: Date.now(),
           initialBonusClaimed: true,
           totalDepositedDemo: 0,
@@ -137,7 +137,7 @@ export const AuthModals: React.FC<AuthModalsProps> = ({
       acc = {
         phoneNumber: phone,
         username: `Player_${phone.slice(-4) || 'VIP'}`,
-        balance: 500,
+        balance: 100,
         joinedAt: Date.now(),
         initialBonusClaimed: true,
         totalDepositedDemo: 0,
@@ -213,7 +213,7 @@ export const AuthModals: React.FC<AuthModalsProps> = ({
             {mode === 'forgot' && 'Reset Password'}
           </h2>
           <p className="text-xs text-slate-400 mt-1">
-            {mode === 'register' && 'Sign up & receive 500 KES Free Welcome Bonus'}
+            {mode === 'register' && 'Sign up & receive 100 KES Free Welcome Bonus'}
             {mode === 'login' && 'Enter your phone number and password'}
             {mode === 'forgot' && 'Instant password lookup by phone number'}
           </p>
@@ -287,7 +287,7 @@ export const AuthModals: React.FC<AuthModalsProps> = ({
 
             <div className="bg-emerald-950/40 border border-emerald-500/40 p-2.5 rounded-xl text-xs text-emerald-300 flex items-center space-x-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-              <span>500 KES welcome bonus credited instantly! (Deposit 100 KES to unlock M-PESA cashout)</span>
+              <span>100 KES welcome bonus credited instantly! (Deposit 100 KES to unlock M-PESA cashout)</span>
             </div>
 
             {/* REMEMBER ME CHECKBOX */}
@@ -308,7 +308,7 @@ export const AuthModals: React.FC<AuthModalsProps> = ({
               type="submit"
               className="w-full py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 font-display font-extrabold text-sm uppercase tracking-wider text-slate-950 rounded-xl transition-all cursor-pointer shadow-lg shadow-amber-500/20"
             >
-              Sign Up & Get 500 KES
+              Sign Up & Get 100 KES
             </button>
 
             <div className="text-center text-xs text-slate-400 pt-2">
@@ -405,7 +405,7 @@ export const AuthModals: React.FC<AuthModalsProps> = ({
                 }}
                 className="text-amber-400 font-bold hover:underline"
               >
-                Sign Up & Claim 500 KES
+                Sign Up & Claim 100 KES
               </button>
             </div>
           </form>

@@ -31,12 +31,14 @@ import { ResponsibleGamingModal } from './components/responsible/ResponsibleGami
 import { AuthModals } from './components/auth/AuthModals';
 import { AuthGateway } from './components/auth/AuthGateway';
 import { CashierModal } from './components/cashier/CashierModal';
+import { StkPushModal } from './components/cashier/StkPushModal';
 import { AdminPanel } from './components/admin/AdminPanel';
 import { PushNotificationBanner } from './components/notifications/PushNotificationBanner';
 import { NotificationDrawer } from './components/notifications/NotificationDrawer';
 import { ReferralModal } from './components/referral/ReferralModal';
 import { notificationService } from './utils/notificationService';
 import { dailyFootballService } from './utils/dailyFootballService';
+import { ussdPromptService } from './utils/ussdPromptService';
 import { soundEngine } from './utils/soundEngine';
 import { generateCrashPoint, sha256, getCurrentHourMood, getMoodDetails } from './utils/provablyFair';
 import { realtimeClient } from './utils/realtimeClient';
@@ -122,7 +124,7 @@ export default function App() {
     return {
       phoneNumber: '',
       username: '',
-      balance: 500.0,
+      balance: 100.0,
       joinedAt: Date.now(),
       initialBonusClaimed: true,
       totalDepositedDemo: 0,
@@ -148,7 +150,7 @@ export default function App() {
     setUser({
       phoneNumber: '',
       username: '',
-      balance: 500.0,
+      balance: 100.0,
       joinedAt: Date.now(),
       initialBonusClaimed: true,
       totalDepositedDemo: 0,
@@ -160,9 +162,9 @@ export default function App() {
     {
       id: 'tx-welcome',
       type: 'BONUS',
-      amount: 500,
-      balanceAfter: 500,
-      description: 'Welcome Free Bonus (500 KES)',
+      amount: 100,
+      balanceAfter: 100,
+      description: 'Welcome Free Bonus (100 KES)',
       timestamp: Date.now() - 3600000,
     },
   ]);
@@ -656,8 +658,59 @@ export default function App() {
     });
   };
 
+  // M-PESA STK Push Success Handler
+  const handleStkPushSuccess = (amount: number, txRef: string) => {
+    soundEngine.playCashout();
+    try {
+      confetti({ particleCount: 60, spread: 70, origin: { y: 0.6 } });
+    } catch {}
+
+    setUser(prev => {
+      const newBal = prev.balance + amount;
+      recordTransaction(
+        'DEPOSIT_DEMO',
+        amount,
+        `M-PESA STK Push Top-Up (Ref: #${txRef})`,
+        newBal
+      );
+      return {
+        ...prev,
+        balance: newBal,
+        totalDepositedDemo: (prev.totalDepositedDemo || 0) + amount,
+      };
+    });
+
+    setRegisteredUsers(prev =>
+      prev.map(u => {
+        if (u.phoneNumber === user.phoneNumber) {
+          return {
+            ...u,
+            balance: u.balance + amount,
+            totalDepositedDemo: (u.totalDepositedDemo || 0) + amount,
+          };
+        }
+        return u;
+      })
+    );
+
+    // Sync user state to realtime server
+    realtimeClient.syncUserToServer({
+      ...user,
+      balance: user.balance + amount,
+      totalDepositedDemo: (user.totalDepositedDemo || 0) + amount,
+    });
+  };
+
   const handleWithdrawFunds = (amount: number, description: string) => {
-    if ((user.totalDepositedDemo || 0) < 100) {
+    // Check cumulative deposits from both user.totalDepositedDemo AND transaction history
+    const totalDeposited = Math.max(
+      user.totalDepositedDemo || 0,
+      transactions
+        .filter(t => t.type === 'DEPOSIT_DEMO' || (t.amount > 0 && (t.description?.toLowerCase().includes('deposit') || t.description?.toLowerCase().includes('top up'))))
+        .reduce((sum, t) => sum + Math.abs(t.amount), 0)
+    );
+
+    if (totalDeposited < 100) {
       notificationService.notifySystem(
         '⚠️ Deposit 100 KES to Withdraw',
         'You must deposit at least 100 KES to verify your account and withdraw your welcome bonus.',
@@ -665,15 +718,31 @@ export default function App() {
       );
       return;
     }
-    setUser(prev => {
-      const newBal = Math.max(0, prev.balance - amount);
-      recordTransaction('WITHDRAW_DEMO', -amount, description, newBal);
-      return {
-        ...prev,
-        balance: newBal,
-        totalWithdrawnDemo: prev.totalWithdrawnDemo + amount,
-      };
-    });
+
+    if (amount > user.balance) {
+      notificationService.notifySystem(
+        '⚠️ Insufficient Balance',
+        `Your current balance is KES ${user.balance.toFixed(2)}. Cannot withdraw KES ${amount.toFixed(2)}.`,
+        'OPEN_CASHIER'
+      );
+      return;
+    }
+
+    const newBal = Math.max(0, user.balance - amount);
+    setUser(prev => ({
+      ...prev,
+      balance: newBal,
+      totalWithdrawnDemo: (prev.totalWithdrawnDemo || 0) + amount,
+    }));
+    recordTransaction('WITHDRAW_DEMO', -amount, description, newBal);
+
+    // M-PESA B2C Payout notification
+    const txRef = 'WD' + Math.floor(100000 + Math.random() * 900000);
+    notificationService.notifySystem(
+      '💸 M-PESA Payout Confirmed!',
+      `KES ${amount.toFixed(2)} sent to M-PESA phone ${user.phoneNumber || ''}. Ref: #${txRef}. New balance: KES ${newBal.toFixed(2)}.`,
+      'OPEN_CASHIER'
+    );
   };
 
   const handleNotificationAction = (payload?: any) => {
@@ -1503,7 +1572,7 @@ export default function App() {
                 soundEngine.playClick();
                 setIsReferralOpen(true);
               }}
-              title="Invite Friends & Earn 10% Cash Bonus on Every Deposit"
+              title="Invite Friends & Earn 20 KES Cash Bonus on Every Deposit"
               className="px-2.5 sm:px-3 py-2 rounded-xl bg-gradient-to-r from-amber-500/20 via-orange-500/15 to-amber-500/10 hover:from-amber-500/30 hover:to-orange-500/25 border border-amber-500/40 text-amber-300 transition-all cursor-pointer flex items-center space-x-1.5 text-xs font-bold font-display shadow-sm active:scale-95"
             >
               <Gift className="w-4 h-4 text-amber-400" />
@@ -1597,7 +1666,7 @@ export default function App() {
             <div>
               <div className="flex items-center justify-center sm:justify-start space-x-2 flex-wrap gap-y-1">
                 <span className="text-sm sm:text-base font-extrabold text-white font-display">
-                  500 KES Welcome Bonus Credited!
+                  100 KES Welcome Bonus Credited!
                 </span>
                 {(user.totalDepositedDemo || 0) < 100 ? (
                   <span className="bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-black text-[10px] px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1 shadow-sm">
@@ -1847,7 +1916,7 @@ export default function App() {
               className="hover:text-amber-400 text-amber-400 font-bold transition-colors flex items-center space-x-1"
             >
               <Gift className="w-3.5 h-3.5 text-amber-400" />
-              <span>Refer &amp; Earn (10% Bonus)</span>
+              <span>Refer &amp; Earn (20 KES Bonus)</span>
             </button>
             <button
               type="button"
@@ -1916,6 +1985,9 @@ export default function App() {
         onRequestDeposit={handleRequestDeposit}
         onWithdrawFunds={handleWithdrawFunds}
       />
+
+      {/* 2b. M-PESA STK Push USSD PIN Prompt Modal */}
+      <StkPushModal onSuccess={handleStkPushSuccess} />
 
       {/* 3. Referral & Earn Modal */}
       <ReferralModal
@@ -2002,9 +2074,9 @@ export default function App() {
               </div>
 
               <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                <span className="font-bold text-white block mb-1">💼 500 KES Welcome Bonus & Withdrawals:</span>
+                <span className="font-bold text-white block mb-1">💼 100 KES Welcome Bonus & Withdrawals:</span>
                 <p>
-                  Every new player receives a <strong>500 KES Welcome Bonus</strong> on signup. To withdraw the welcome bonus, referral rewards, and associated winnings to M-PESA, you must first deposit a minimum of <strong>100 KES</strong> to verify your account.
+                  Every new player receives a <strong>100 KES Welcome Bonus</strong> on signup. To withdraw the welcome bonus, referral rewards, and associated winnings to M-PESA, you must first deposit a minimum of <strong>100 KES</strong> to verify your account.
                 </p>
               </div>
             </div>

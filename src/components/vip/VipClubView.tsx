@@ -41,7 +41,7 @@ const VIP_TIERS: VipTier[] = [
     color: 'from-amber-900/60 to-slate-900',
     borderColor: 'border-amber-700/50',
     textColor: 'text-amber-500',
-    perks: ['Standard M-PESA Payouts', '500 KES Welcome Bonus', 'Community Chat Access'],
+    perks: ['Standard M-PESA Payouts', '100 KES Welcome Bonus', 'Community Chat Access'],
   },
   {
     id: 'silver',

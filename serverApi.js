@@ -128,7 +128,7 @@ class RealtimeStore {
       savedUser = {
         phoneNumber: account.phoneNumber,
         username: account.username || `Player_${account.phoneNumber.slice(-4)}`,
-        balance: typeof account.balance === 'number' ? account.balance : 500,
+        balance: typeof account.balance === 'number' ? account.balance : 100,
         joinedAt: account.joinedAt || Date.now(),
         initialBonusClaimed: true,
         totalDepositedDemo: account.totalDepositedDemo || 0,
@@ -242,7 +242,7 @@ class RealtimeStore {
       this.users[userIdx].totalDepositedDemo = (this.users[userIdx].totalDepositedDemo || 0) + dep.amount;
       updatedUser = this.users[userIdx];
 
-      // Check for Referral Bonus payout (10% of deposit, min 50 KES)
+      // Check for Referral Bonus payout (fixed 20 KES bonus per friend deposit)
       if (updatedUser.referredBy) {
         const refCode = updatedUser.referredBy.trim().toUpperCase();
         const refIdx = this.users.findIndex(
@@ -252,7 +252,7 @@ class RealtimeStore {
         );
 
         if (refIdx >= 0) {
-          const bonusAmount = Math.max(50, Math.round(dep.amount * 0.10));
+          const bonusAmount = 20; // 20 KES fixed referral bonus
           this.users[refIdx].balance += bonusAmount;
           this.users[refIdx].referralBonusEarned = (this.users[refIdx].referralBonusEarned || 0) + bonusAmount;
           const referrer = this.users[refIdx];
@@ -362,7 +362,7 @@ export function setupApiRoutes(app) {
     const account = {
       phoneNumber: cleanPhone,
       username: cleanUsername,
-      balance: 500, // 500 KES Instant Free Welcome Bonus
+      balance: 100, // 100 KES Instant Free Welcome Bonus
       joinedAt: Date.now(),
       initialBonusClaimed: true,
       totalDepositedDemo: 0,
@@ -476,4 +476,37 @@ export function setupApiRoutes(app) {
     }
     res.json({ success: true, deposit: result });
   });
+
+  // 13. M-PESA USSD STK Push Trigger Endpoint
+  app.post('/api/mpesa/stkpush', (req, res) => {
+    const { phoneNumber, amount, accountReference } = req.body;
+    if (!phoneNumber || !amount) {
+      return res.status(400).json({ error: 'Missing phoneNumber or amount' });
+    }
+
+    // Format phone to 254...
+    let cleanPhone = String(phoneNumber).replace(/\D/g, '');
+    if (cleanPhone.startsWith('0') && cleanPhone.length === 10) {
+      cleanPhone = '254' + cleanPhone.slice(1);
+    } else if (cleanPhone.length === 9) {
+      cleanPhone = '254' + cleanPhone;
+    }
+
+    const checkoutRequestId = 'ws_CO_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
+    const merchantRequestId = '29115-' + Date.now();
+
+    console.log(`[M-PESA STK PUSH] Sending USSD STK Prompt to phone: ${cleanPhone} for KES ${amount} (Ref: ${accountReference || 'LuckyBet'})`);
+
+    res.json({
+      success: true,
+      ResponseCode: '0',
+      ResponseDescription: 'Success. Request accepted for processing',
+      MerchantRequestID: merchantRequestId,
+      CheckoutRequestID: checkoutRequestId,
+      CustomerMessage: `Success. Prompt sent to ${cleanPhone}. Please enter your M-PESA PIN to complete the transaction.`,
+      phoneNumber: cleanPhone,
+      amount,
+    });
+  });
 }
+

@@ -89,7 +89,7 @@ export const AuthGateway: React.FC<AuthGatewayProps> = ({ onSuccess }) => {
       finalAccount = {
         phoneNumber: cleanPhone,
         username: cleanUsername,
-        balance: 500,
+        balance: 100,
         joinedAt: Date.now(),
         initialBonusClaimed: true,
         totalDepositedDemo: 0,
@@ -157,7 +157,7 @@ export const AuthGateway: React.FC<AuthGatewayProps> = ({ onSuccess }) => {
           account = {
             phoneNumber: parsed.phoneNumber || cleanPhone,
             username: parsed.username || `Player_${cleanPhone.slice(-4)}`,
-            balance: typeof parsed.balance === 'number' ? parsed.balance : 500,
+            balance: typeof parsed.balance === 'number' ? parsed.balance : 100,
             joinedAt: parsed.joinedAt || Date.now(),
             initialBonusClaimed: parsed.initialBonusClaimed ?? true,
             totalDepositedDemo: parsed.totalDepositedDemo || 0,
@@ -261,7 +261,7 @@ export const AuthGateway: React.FC<AuthGatewayProps> = ({ onSuccess }) => {
         <div className="w-full lg:w-1/2 space-y-6 text-center lg:text-left">
           <div className="inline-flex items-center space-x-2 px-3 py-1.5 rounded-full bg-gradient-to-r from-amber-500/10 to-red-500/10 border border-amber-500/30 text-amber-400 text-xs font-bold font-display uppercase tracking-wider">
             <Sparkles className="w-3.5 h-3.5" />
-            <span>500 KES Instant Free Welcome Bonus</span>
+            <span>100 KES Instant Free Welcome Bonus</span>
           </div>
 
           <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black font-display tracking-tight text-white leading-tight">
@@ -279,7 +279,7 @@ export const AuthGateway: React.FC<AuthGatewayProps> = ({ onSuccess }) => {
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-2">
             <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-3 text-left">
               <Trophy className="w-5 h-5 text-amber-400 mb-1.5" />
-              <div className="text-xs font-bold text-white">500 KES Bonus</div>
+              <div className="text-xs font-bold text-white">100 KES Bonus</div>
               <div className="text-[10px] text-slate-400">Awarded immediately</div>
             </div>
 
@@ -331,7 +331,7 @@ export const AuthGateway: React.FC<AuthGatewayProps> = ({ onSuccess }) => {
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
-                Sign Up (+500 KES)
+                Sign Up (+100 KES)
               </button>
             </div>
 
@@ -438,7 +438,7 @@ export const AuthGateway: React.FC<AuthGatewayProps> = ({ onSuccess }) => {
                 <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 flex items-center space-x-2 text-xs text-amber-300">
                   <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
                   <span>
-                    <strong>New Player Promo:</strong> Get <strong>500 KES free credit</strong> instantly in your wallet!
+                    <strong>New Player Promo:</strong> Get <strong>100 KES free credit</strong> instantly in your wallet!
                   </span>
                 </div>
 
@@ -553,7 +553,7 @@ export const AuthGateway: React.FC<AuthGatewayProps> = ({ onSuccess }) => {
                     </>
                   ) : (
                     <>
-                      <span>Create Account & Get 500 KES</span>
+                      <span>Create Account & Get 100 KES</span>
                       <ArrowRight className="w-4 h-4" />
                     </>
                   )}

@@ -51,7 +51,7 @@ export const ReferralModal: React.FC<ReferralModalProps> = ({
 
   const handleWhatsAppShare = () => {
     soundEngine.playClick();
-    const shareMessage = `🔥 Join me on LUCKY BET! Register now using my referral link and claim an instant 500 KES Welcome Bonus for Aviator & Sports Betting:\n\n${referralLink}\n\nGood luck! 🚀⚽`;
+    const shareMessage = `🔥 Join me on LUCKY BET! Register now using my referral link and claim an instant 100 KES Welcome Bonus for Aviator & Sports Betting:\n\n${referralLink}\n\nGood luck! 🚀⚽`;
     const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(shareMessage)}`;
     window.open(whatsappUrl, '_blank');
   };
@@ -62,7 +62,7 @@ export const ReferralModal: React.FC<ReferralModalProps> = ({
       try {
         await navigator.share({
           title: 'Lucky Bet Kenya - Invitation Bonus',
-          text: `Join Lucky Bet with my referral code ${referralCode} and claim 500 KES welcome bonus!`,
+          text: `Join Lucky Bet with my referral code ${referralCode} and claim 100 KES welcome bonus!`,
           url: referralLink,
         });
       } catch {
@@ -90,7 +90,7 @@ export const ReferralModal: React.FC<ReferralModalProps> = ({
                     Refer &amp; Earn
                   </span>
                   <span className="text-xs text-amber-200 font-semibold flex items-center">
-                    <Sparkles className="w-3.5 h-3.5 mr-1" /> 10% Cash Commission
+                    <Sparkles className="w-3.5 h-3.5 mr-1" /> 20 KES Cash Bonus
                   </span>
                 </div>
                 <h3 className="text-xl sm:text-2xl font-black font-display tracking-tight text-white mt-0.5">
@@ -109,7 +109,7 @@ export const ReferralModal: React.FC<ReferralModalProps> = ({
             </button>
           </div>
           <p className="mt-3 text-xs sm:text-sm text-amber-100/90 leading-relaxed relative z-10">
-            Share your unique referral link. Whenever your invited friends make a deposit that is approved by the admin, you receive an instant <strong className="text-white underline decoration-amber-300">10% cash bonus</strong> straight to your balance!
+            Share your unique referral link. Whenever your invited friends make a deposit that is approved by the admin, you receive an instant <strong className="text-white underline decoration-amber-300">20 KES cash bonus</strong> straight to your balance!
           </p>
         </div>
 
@@ -224,7 +224,7 @@ export const ReferralModal: React.FC<ReferralModalProps> = ({
                   2
                 </span>
                 <p>
-                  <strong className="text-slate-200">Friend registers:</strong> Your friend signs up with your code and receives a free 500 KES Welcome Bonus.
+                  <strong className="text-slate-200">Friend registers:</strong> Your friend signs up with your code and receives a free 100 KES Welcome Bonus.
                 </p>
               </div>
 
@@ -233,7 +233,7 @@ export const ReferralModal: React.FC<ReferralModalProps> = ({
                   3
                 </span>
                 <p>
-                  <strong className="text-emerald-400">Automatic Cash Commission:</strong> Whenever your referred friend requests a deposit and it is approved by the admin/cashier, you get credited with 10% bonus balance instantly!
+                  <strong className="text-emerald-400">Automatic Cash Commission:</strong> Whenever your referred friend requests a deposit and it is approved by the admin/cashier, you get credited with 20 KES bonus balance instantly!
                 </p>
               </div>
             </div>

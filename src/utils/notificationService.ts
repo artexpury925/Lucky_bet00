@@ -24,7 +24,7 @@ class NotificationService {
         id: 'init-welcome',
         type: 'SYSTEM',
         title: '🎉 Welcome to Lucky Bet Kenya!',
-        body: 'Your 500 KES welcome credit is active. Invite friends with your referral link to earn 10% on every deposit they make!',
+        body: 'Your 100 KES welcome credit is active. Invite friends with your referral link to earn 20 KES on every deposit they make!',
         timestamp: Date.now() - 1000 * 60 * 30,
         read: false,
         actionLabel: 'Invite Friends',
@@ -153,7 +153,7 @@ class NotificationService {
     return this.push({
       type: 'REFERRAL_BONUS',
       title: `🎁 Referral Bonus Credited! +KES ${bonusAmount.toFixed(2)}`,
-      body: `Your invited friend @${friendUsername} made an approved deposit of KES ${depositAmount}. You earned an instant 10% cash bonus!`,
+      body: `Your invited friend @${friendUsername} made an approved deposit of KES ${depositAmount}. You earned an instant 20 KES cash bonus!`,
       actionLabel: 'Invite More',
       actionPayload: { type: 'OPEN_REFERRAL' },
     });
