@@ -6,19 +6,22 @@ import com.aistudio.luckybet.data.model.AviatorHistoryItem
 import com.aistudio.luckybet.data.model.AviatorHourlyMood
 import com.aistudio.luckybet.data.model.AviatorTheme
 import com.aistudio.luckybet.data.model.BetStatus
-import com.aistudio.luckybet.data.model.DepositStatus
 import com.aistudio.luckybet.data.model.FootballMatch
 import com.aistudio.luckybet.data.model.GamePhase
-import com.aistudio.luckybet.data.model.MatchOdds
 import com.aistudio.luckybet.data.model.MatchStatus
 import com.aistudio.luckybet.data.model.PendingDeposit
 import com.aistudio.luckybet.data.model.PlacedSportsBet
 import com.aistudio.luckybet.data.model.PlayerBetConfig
 import com.aistudio.luckybet.data.model.SimulatedPlayer
 import com.aistudio.luckybet.data.model.SlipSelection
+import com.aistudio.luckybet.data.model.StkPromptStatus
+import com.aistudio.luckybet.data.model.StkPushPromptState
 import com.aistudio.luckybet.data.model.TransactionType
 import com.aistudio.luckybet.data.model.UserAccount
 import com.aistudio.luckybet.data.model.WalletTransaction
+import com.aistudio.luckybet.data.model.WithdrawalOtpChallenge
+import com.aistudio.luckybet.data.network.LiveFootballClient
+import com.aistudio.luckybet.data.network.MpesaDarajaClient
 import com.aistudio.luckybet.data.util.ProvablyFair
 import com.aistudio.luckybet.ui.components.aviator.MyFlightRecord
 import kotlinx.coroutines.Job
@@ -32,9 +35,7 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import java.util.UUID
 import kotlin.math.max
-import kotlin.math.min
 import kotlin.math.pow
 import kotlin.random.Random
 
@@ -45,15 +46,15 @@ data class LuckyBetUiState(
     val user: UserAccount = UserAccount(
         phoneNumber = "0712345678",
         username = "LuckyPlayer_254",
-        balance = 500.0
+        balance = 100.0
     ),
     val transactions: List<WalletTransaction> = listOf(
         WalletTransaction(
             id = "tx-welcome",
             type = TransactionType.BONUS,
-            amount = 500.0,
-            balanceAfter = 500.0,
-            description = "Welcome Free Bonus (500 KES)",
+            amount = 100.0,
+            balanceAfter = 100.0,
+            description = "Welcome Free Bonus (100 KES)",
             timestamp = System.currentTimeMillis() - 3600000
         )
     ),
@@ -68,18 +69,23 @@ data class LuckyBetUiState(
     val minutesToShift: Int = 45,
     val rtpRate: Double = 0.97,
     val bet1: PlayerBetConfig = PlayerBetConfig(amount = 50.0, autoCashoutMultiplier = 2.0),
-    val bet2: PlayerBetConfig = PlayerBetConfig(amount = 100.0, autoCashoutMultiplier = 3.0),
+    val bet2: PlayerBetConfig = PlayerBetConfig(amount = 50.0, autoCashoutMultiplier = 3.0),
     val simPlayers: List<SimulatedPlayer> = emptyList(),
     val myFlightHistory: List<MyFlightRecord> = emptyList(),
     // Sports
     val matches: List<FootballMatch> = emptyList(),
     val activeSlip: List<SlipSelection> = emptyList(),
     val placedSportsBets: List<PlacedSportsBet> = emptyList(),
-    // Admin & Cashier
+    // Direct Paybill STK Push & Mandatory 2FA Withdrawal OTP
+    val stkPrompt: StkPushPromptState? = null,
+    val withdrawalOtpChallenge: WithdrawalOtpChallenge? = null,
+    val latestSmsBanner: String? = null,
+    // Admin & Modals
     val registeredUsers: List<UserAccount> = emptyList(),
     val pendingDeposits: List<PendingDeposit> = emptyList(),
     val isCashierOpen: Boolean = false,
     val cashierInitialTab: String = "deposit",
+    val isReferralOpen: Boolean = false,
     val isAdminOpen: Boolean = false,
     val isRulesOpen: Boolean = false,
     val isAccountOpen: Boolean = false
@@ -92,10 +98,14 @@ class LuckyBetViewModel : ViewModel() {
 
     private var flightJob: Job? = null
     private var sportsJob: Job? = null
+    private var stkTimerJob: Job? = null
+    private var otpTimerJob: Job? = null
+    private var smsBannerJob: Job? = null
     private var forcedMultiplier: Double? = null
 
     init {
         initInitialData()
+        loadRealFootballMatches()
         startAviatorGameLoop()
         startSportsSimulation()
         startHourlyMoodWatcher()
@@ -113,90 +123,24 @@ class LuckyBetViewModel : ViewModel() {
             AviatorHistoryItem("h8", 8428, 22.40, System.currentTimeMillis() - 5000, "5561a09cb1...22c")
         )
 
-        val initialMatches = listOf(
-            FootballMatch(
-                id = "m1",
-                league = "Premier League",
-                homeTeam = "Arsenal",
-                awayTeam = "Chelsea",
-                homeScore = 1,
-                awayScore = 0,
-                minute = 68,
-                status = MatchStatus.LIVE,
-                startTime = "Live 68'",
-                odds = MatchOdds(1.65, 3.80, 5.20, 1.72, 2.10, 1.85, 1.95)
-            ),
-            FootballMatch(
-                id = "m2",
-                league = "Kenya Premier League",
-                homeTeam = "Gor Mahia",
-                awayTeam = "AFC Leopards",
-                homeScore = 2,
-                awayScore = 1,
-                minute = 82,
-                status = MatchStatus.LIVE,
-                startTime = "Live 82'",
-                odds = MatchOdds(1.55, 3.60, 6.00, 1.90, 1.80, 1.65, 2.15)
-            ),
-            FootballMatch(
-                id = "m3",
-                league = "Champions League",
-                homeTeam = "Real Madrid",
-                awayTeam = "Bayern Munich",
-                homeScore = 0,
-                awayScore = 0,
-                minute = 23,
-                status = MatchStatus.LIVE,
-                startTime = "Live 23'",
-                odds = MatchOdds(2.25, 3.50, 3.10, 1.65, 2.20, 1.55, 2.35)
-            ),
-            FootballMatch(
-                id = "m4",
-                league = "Premier League",
-                homeTeam = "Manchester City",
-                awayTeam = "Liverpool",
-                homeScore = 0,
-                awayScore = 0,
-                minute = 0,
-                status = MatchStatus.UPCOMING,
-                startTime = "Today 21:00",
-                odds = MatchOdds(1.95, 3.75, 3.80, 1.55, 2.45, 1.50, 2.50)
-            ),
-            FootballMatch(
-                id = "m5",
-                league = "La Liga",
-                homeTeam = "Barcelona",
-                awayTeam = "Atletico Madrid",
-                homeScore = 0,
-                awayScore = 0,
-                minute = 0,
-                status = MatchStatus.UPCOMING,
-                startTime = "Tomorrow 20:30",
-                odds = MatchOdds(1.80, 3.65, 4.40, 1.85, 1.95, 1.70, 2.10)
-            )
-        )
-
         val initialUsers = listOf(
-            UserAccount("0712345678", "LuckyPlayer_254", 500.0),
-            UserAccount("0722894102", "Kiprotich_99", 750.0),
-            UserAccount("0714529381", "Amina_Bet", 1200.0),
-            UserAccount("0799812401", "Omondi_K", 350.0)
-        )
-
-        val initialPendingDeposits = listOf(
-            PendingDeposit("dep-101", "0722894102", "Kiprotich_99", 200.0, "QKF81920J1", System.currentTimeMillis() - 120000),
-            PendingDeposit("dep-102", "0714529381", "Amina_Bet", 300.0, "QK9103982A", System.currentTimeMillis() - 360000)
+            UserAccount("0712345678", "LuckyPlayer_254", 100.0)
         )
 
         _uiState.update {
             it.copy(
                 history = initialHistory,
-                matches = initialMatches,
                 registeredUsers = initialUsers,
-                pendingDeposits = initialPendingDeposits,
                 hourlyMood = ProvablyFair.getCurrentHourMood(),
                 minutesToShift = ProvablyFair.getMinutesToShift()
             )
+        }
+    }
+
+    private fun loadRealFootballMatches() {
+        viewModelScope.launch {
+            val todaysMatches = LiveFootballClient.fetchTodaysRealMatches()
+            _uiState.update { it.copy(matches = todaysMatches) }
         }
     }
 
@@ -204,10 +148,9 @@ class LuckyBetViewModel : ViewModel() {
         val names = listOf(
             "mwangi_254", "chebet_pro", "otieno_fly", "kip_ace", "wafula_9",
             "lucy_win", "kamau_pilot", "nyambura_k", "hassan_fast", "brian_jet",
-            "mercy_sky", "victor_c", "wambui_vip", "omondi_gold", "dennis_ke",
-            "grace_star", "john_m", "faith_w", "george_fly", "esther_win"
+            "mercy_sky", "victor_c", "wambui_vip", "omondi_gold", "dennis_ke"
         )
-        val betOptions = listOf(20.0, 50.0, 100.0, 200.0, 500.0, 1000.0)
+        val betOptions = listOf(20.0, 50.0, 100.0, 200.0, 500.0)
 
         return names.mapIndexed { idx, name ->
             val bet = betOptions.random()
@@ -225,7 +168,6 @@ class LuckyBetViewModel : ViewModel() {
         flightJob?.cancel()
         flightJob = viewModelScope.launch {
             while (isActive) {
-                // WAITING PHASE (5 seconds countdown)
                 _uiState.update {
                     it.copy(
                         phase = GamePhase.WAITING,
@@ -242,7 +184,6 @@ class LuckyBetViewModel : ViewModel() {
                     delay(50)
                 }
 
-                // FLYING PHASE
                 val newRound = _uiState.value.roundNumber + 1
                 val targetCrash = forcedMultiplier ?: run {
                     val (mult, _) = ProvablyFair.generateCrashPoint(
@@ -270,28 +211,30 @@ class LuckyBetViewModel : ViewModel() {
                 while (currentMult < targetCrash && isActive) {
                     val elapsedSec = (System.currentTimeMillis() - flightStart) / 1000.0
                     currentMult = max(1.0, 1.0 + 0.08 * elapsedSec + 0.048 * elapsedSec.pow(2.0))
-
-                    if (currentMult >= targetCrash) {
-                        currentMult = targetCrash
-                    }
+                    if (currentMult >= targetCrash) currentMult = targetCrash
 
                     val updatedMult = currentMult
+                    var autoWin1: Double? = null
+                    var autoWin2: Double? = null
+
                     _uiState.update { state ->
-                        // Check auto cashout bet1
                         var b1 = state.bet1
+                        var newBal = state.user.balance
                         if (b1.isPlaced && !b1.hasCashedOut && b1.autoCashoutEnabled && updatedMult >= b1.autoCashoutMultiplier) {
                             val win = b1.amount * b1.autoCashoutMultiplier
                             b1 = b1.copy(hasCashedOut = true, cashoutMultiplier = b1.autoCashoutMultiplier, winAmount = win)
+                            newBal += win
+                            autoWin1 = win
                         }
 
-                        // Check auto cashout bet2
                         var b2 = state.bet2
                         if (b2.isPlaced && !b2.hasCashedOut && b2.autoCashoutEnabled && updatedMult >= b2.autoCashoutMultiplier) {
                             val win = b2.amount * b2.autoCashoutMultiplier
                             b2 = b2.copy(hasCashedOut = true, cashoutMultiplier = b2.autoCashoutMultiplier, winAmount = win)
+                            newBal += win
+                            autoWin2 = win
                         }
 
-                        // Update simulated players cashing out
                         val updatedSim = state.simPlayers.map { p ->
                             if (!p.cashedOut && updatedMult >= p.targetCashout) {
                                 p.copy(cashedOut = true, cashedOutMultiplier = p.targetCashout, winAmount = p.betAmount * p.targetCashout)
@@ -299,6 +242,7 @@ class LuckyBetViewModel : ViewModel() {
                         }
 
                         state.copy(
+                            user = state.user.copy(balance = newBal),
                             currentMultiplier = updatedMult,
                             bet1 = b1,
                             bet2 = b2,
@@ -306,11 +250,17 @@ class LuckyBetViewModel : ViewModel() {
                         )
                     }
 
+                    autoWin1?.let { w ->
+                        recordTx(TransactionType.AVIATOR_WIN, w, "Auto Cashout #1", _uiState.value.user.balance)
+                    }
+                    autoWin2?.let { w ->
+                        recordTx(TransactionType.AVIATOR_WIN, w, "Auto Cashout #2", _uiState.value.user.balance)
+                    }
+
                     if (currentMult >= targetCrash) break
                     delay(30)
                 }
 
-                // CRASHED PHASE
                 _uiState.update { state ->
                     val historyItem = AviatorHistoryItem(
                         id = "round-$newRound-${System.currentTimeMillis()}",
@@ -343,10 +293,8 @@ class LuckyBetViewModel : ViewModel() {
                     )
                 }
 
-                // Pause on crash screen for 2.8 seconds
                 delay(2800)
 
-                // Reset placed bets for next flight
                 _uiState.update { state ->
                     state.copy(
                         bet1 = state.bet1.copy(isPlaced = false, hasCashedOut = false, cashoutMultiplier = 0.0, winAmount = 0.0),
@@ -361,27 +309,24 @@ class LuckyBetViewModel : ViewModel() {
         sportsJob?.cancel()
         sportsJob = viewModelScope.launch {
             while (isActive) {
-                delay(12000)
+                delay(15000)
                 _uiState.update { state ->
-                    val updated = state.matches.map { m ->
-                        if (m.status != MatchStatus.LIVE) return@map m
+                    val updated = state.matches.mapNotNull { m ->
+                        if (m.status != MatchStatus.LIVE) return@mapNotNull m
                         val newMin = m.minute + 1
                         if (newMin >= 90) {
-                            m.copy(minute = 90, status = MatchStatus.FINISHED, startTime = "FT")
+                            null // Remove finished matches so only live/upcoming fixtures show
                         } else {
                             var homeS = m.homeScore
                             var awayS = m.awayScore
-                            if (Random.nextDouble() < 0.04) {
+                            if (Random.nextDouble() < 0.03) {
                                 if (Random.nextBoolean()) homeS++ else awayS++
                             }
                             m.copy(
                                 minute = newMin,
+                                startTime = "Live ${newMin}'",
                                 homeScore = homeS,
-                                awayScore = awayS,
-                                odds = m.odds.copy(
-                                    home = max(1.1, Math.round((m.odds.home + (Random.nextDouble() - 0.5) * 0.04) * 100.0) / 100.0),
-                                    away = max(1.1, Math.round((m.odds.away + (Random.nextDouble() - 0.5) * 0.04) * 100.0) / 100.0)
-                                )
+                                awayScore = awayS
                             )
                         }
                     }
@@ -407,7 +352,297 @@ class LuckyBetViewModel : ViewModel() {
         }
     }
 
-    // ACTIONS
+    // =========================================================================
+    // DIRECT PAYBILL M-PESA USSD STK PUSH
+    // =========================================================================
+    fun triggerStkPush(amount: Double, rawPhone: String) {
+        val parsed = MpesaDarajaClient.formatKenyanPhone(rawPhone.ifBlank { _uiState.value.user.phoneNumber })
+        if (!parsed.isValid) return
+
+        val reqId = "stk-${System.currentTimeMillis()}"
+        val paybill = MpesaDarajaClient.getConfiguredPaybill()
+        val accountRef = MpesaDarajaClient.getConfiguredPaybillAccount()
+
+        val initialPrompt = StkPushPromptState(
+            requestId = reqId,
+            phoneNumber = parsed.localDisplay,
+            internationalPhone = parsed.international,
+            amount = amount,
+            paybill = paybill,
+            accountReference = accountRef,
+            secondsRemaining = 45,
+            status = StkPromptStatus.PENDING_PIN,
+            darajaStatusNote = "Direct Paybill $paybill USSD Prompt Active"
+        )
+
+        _uiState.update { it.copy(stkPrompt = initialPrompt) }
+
+        // Dispatch live Daraja API request on IO thread if secrets configured
+        viewModelScope.launch {
+            val darajaRes = MpesaDarajaClient.dispatchStkPush(parsed.localDisplay, amount, accountRef)
+            _uiState.update { state ->
+                val cur = state.stkPrompt ?: return@update state
+                if (cur.requestId != reqId) return@update state
+                state.copy(
+                    stkPrompt = cur.copy(
+                        paybill = darajaRes.shortcode,
+                        accountReference = darajaRes.paybillAccount,
+                        liveDarajaSent = darajaRes.liveNetworkDispatched,
+                        darajaStatusNote = darajaRes.statusMessage
+                    )
+                )
+            }
+        }
+
+        // 45s SIM Toolkit countdown
+        stkTimerJob?.cancel()
+        stkTimerJob = viewModelScope.launch {
+            for (sec in 44 downTo 0) {
+                delay(1000)
+                val cur = _uiState.value.stkPrompt ?: break
+                if (cur.requestId != reqId || cur.status != StkPromptStatus.PENDING_PIN) break
+                if (sec == 0) {
+                    _uiState.update { it.copy(stkPrompt = cur.copy(secondsRemaining = 0, status = StkPromptStatus.TIMEOUT)) }
+                    delay(1800)
+                    _uiState.update { state ->
+                        if (state.stkPrompt?.requestId == reqId) state.copy(stkPrompt = null) else state
+                    }
+                } else {
+                    _uiState.update { it.copy(stkPrompt = cur.copy(secondsRemaining = sec)) }
+                }
+            }
+        }
+    }
+
+    fun submitStkPin(pin: String) {
+        val cur = _uiState.value.stkPrompt ?: return
+        if (pin.length < 4) return
+
+        stkTimerJob?.cancel()
+        _uiState.update { it.copy(stkPrompt = cur.copy(status = StkPromptStatus.PROCESSING)) }
+
+        viewModelScope.launch {
+            delay(650)
+            val chars = "ABCDEFGHJKLMNPQRSTUVWXYZ"
+            val randLetters = (1..4).map { chars.random() }.joinToString("")
+            val txRef = "QK$randLetters${(100000..999999).random()}"
+
+            val user = _uiState.value.user
+            var updatedBal = user.balance + cur.amount
+            val updatedTotalDep = user.totalDepositedDemo + cur.amount
+
+            recordTx(
+                TransactionType.DEPOSIT_DEMO,
+                cur.amount,
+                "M-PESA Paybill ${cur.paybill} Deposit ($txRef)",
+                updatedBal
+            )
+
+            // Award 20 KES referral bonus if user linked a referrer
+            var refEarned = user.referralBonusEarned
+            if (!user.referredBy.isNullOrBlank()) {
+                updatedBal += 20.0
+                refEarned += 20.0
+                recordTx(
+                    TransactionType.REFERRAL_BONUS,
+                    20.0,
+                    "Referral Deposit Bonus (+20 KES)",
+                    updatedBal
+                )
+            }
+
+            _uiState.update { state ->
+                state.copy(
+                    user = user.copy(
+                        balance = updatedBal,
+                        totalDepositedDemo = updatedTotalDep,
+                        referralBonusEarned = refEarned
+                    ),
+                    stkPrompt = cur.copy(status = StkPromptStatus.ACCEPTED, txRef = txRef)
+                )
+            }
+
+            showSmsBanner(
+                "$txRef Confirmed. Ksh%.2f sent directly to Paybill %s (Acc: %s). New Wallet Balance: KES %.2f".format(
+                    cur.amount,
+                    cur.paybill,
+                    cur.accountReference,
+                    updatedBal
+                )
+            )
+
+            delay(1300)
+            _uiState.update { it.copy(stkPrompt = null) }
+        }
+    }
+
+    fun cancelStkPrompt() {
+        stkTimerJob?.cancel()
+        _uiState.update { it.copy(stkPrompt = null) }
+    }
+
+    // =========================================================================
+    // MANDATORY 2FA SMS OTP STEP FOR ALL WITHDRAWALS
+    // =========================================================================
+    fun initiateWithdrawalWith2FA(amount: Double, destinationPhone: String) {
+        val user = _uiState.value.user
+        if (amount < 100.0 || amount > user.balance || user.totalDepositedDemo < 100.0) return
+
+        val registeredPhone = user.phoneNumber.ifBlank { destinationPhone }
+        val otpCode = (100000..999999).random().toString()
+        val challengeId = "otp-${System.currentTimeMillis()}"
+
+        val challenge = WithdrawalOtpChallenge(
+            challengeId = challengeId,
+            registeredPhone = registeredPhone,
+            destinationPhone = destinationPhone,
+            amount = amount,
+            expectedCode = otpCode,
+            secondsRemaining = 300,
+            resendCooldown = 30,
+            attemptsRemaining = 5,
+            liveSmsDispatched = false
+        )
+
+        _uiState.update { it.copy(withdrawalOtpChallenge = challenge) }
+
+        // Dispatch real SMS via Africa's Talking if SMS_API_KEY is configured in Secrets
+        viewModelScope.launch {
+            val sentLive = MpesaDarajaClient.dispatchWithdrawalSmsOtp(registeredPhone, amount, otpCode)
+            _uiState.update { state ->
+                val cur = state.withdrawalOtpChallenge ?: return@update state
+                if (cur.challengeId != challengeId) return@update state
+                state.copy(withdrawalOtpChallenge = cur.copy(liveSmsDispatched = sentLive))
+            }
+            if (!sentLive) {
+                showSmsBanner("SMS to $registeredPhone: Your Lucky Bet 2FA withdrawal code is $otpCode (KES %.0f)".format(amount))
+            }
+        }
+
+        startOtpCountdown(challengeId)
+    }
+
+    fun resendWithdrawalOtp() {
+        val cur = _uiState.value.withdrawalOtpChallenge ?: return
+        if (cur.resendCooldown > 0) return
+        initiateWithdrawalWith2FA(cur.amount, cur.destinationPhone)
+    }
+
+    private fun startOtpCountdown(challengeId: String) {
+        otpTimerJob?.cancel()
+        otpTimerJob = viewModelScope.launch {
+            while (isActive) {
+                delay(1000)
+                val cur = _uiState.value.withdrawalOtpChallenge ?: break
+                if (cur.challengeId != challengeId) break
+                val nextSec = (cur.secondsRemaining - 1).coerceAtLeast(0)
+                val nextCool = (cur.resendCooldown - 1).coerceAtLeast(0)
+                val expiredErr = if (nextSec == 0) "Code expired. Tap Resend SMS Code to receive a new 2FA code." else cur.errorMessage
+                _uiState.update {
+                    it.copy(
+                        withdrawalOtpChallenge = cur.copy(
+                            secondsRemaining = nextSec,
+                            resendCooldown = nextCool,
+                            errorMessage = expiredErr
+                        )
+                    )
+                }
+                if (nextSec == 0) break
+            }
+        }
+    }
+
+    fun verifyWithdrawalOtp(enteredCode: String) {
+        val cur = _uiState.value.withdrawalOtpChallenge ?: return
+        val clean = enteredCode.filter { it.isDigit() }
+
+        if (cur.secondsRemaining <= 0) {
+            _uiState.update {
+                it.copy(withdrawalOtpChallenge = cur.copy(errorMessage = "Verification code expired. Please resend SMS code."))
+            }
+            return
+        }
+
+        if (clean != cur.expectedCode) {
+            val left = (cur.attemptsRemaining - 1).coerceAtLeast(0)
+            if (left == 0) {
+                otpTimerJob?.cancel()
+                _uiState.update { it.copy(withdrawalOtpChallenge = null) }
+                showSmsBanner("Withdrawal cancelled: Too many incorrect 2FA attempts.")
+            } else {
+                _uiState.update {
+                    it.copy(
+                        withdrawalOtpChallenge = cur.copy(
+                            attemptsRemaining = left,
+                            errorMessage = "Incorrect 2FA SMS code. $left attempts remaining."
+                        )
+                    )
+                }
+            }
+            return
+        }
+
+        // 2FA Verified! Process Withdrawal
+        otpTimerJob?.cancel()
+        val user = _uiState.value.user
+        if (cur.amount > user.balance) {
+            _uiState.update { it.copy(withdrawalOtpChallenge = null) }
+            return
+        }
+
+        val ref = "WD" + (100000..999999).random()
+        val newBal = max(0.0, user.balance - cur.amount)
+        recordTx(
+            TransactionType.WITHDRAW_DEMO,
+            -cur.amount,
+            "M-PESA Payout to ${cur.destinationPhone} (2FA Verified • #$ref)",
+            newBal
+        )
+
+        _uiState.update {
+            it.copy(
+                user = user.copy(
+                    balance = newBal,
+                    totalWithdrawnDemo = user.totalWithdrawnDemo + cur.amount
+                ),
+                withdrawalOtpChallenge = null,
+                isCashierOpen = false
+            )
+        }
+
+        showSmsBanner(
+            "#$ref Confirmed. KES %.2f withdrawn (2FA Verified) to M-PESA %s. Remaining Balance: KES %.2f".format(
+                cur.amount,
+                cur.destinationPhone,
+                newBal
+            )
+        )
+    }
+
+    fun cancelWithdrawalOtp() {
+        otpTimerJob?.cancel()
+        _uiState.update { it.copy(withdrawalOtpChallenge = null) }
+    }
+
+    fun dismissSmsBanner() {
+        smsBannerJob?.cancel()
+        _uiState.update { it.copy(latestSmsBanner = null) }
+    }
+
+    private fun showSmsBanner(msg: String) {
+        smsBannerJob?.cancel()
+        _uiState.update { it.copy(latestSmsBanner = msg) }
+        smsBannerJob = viewModelScope.launch {
+            delay(7000)
+            _uiState.update { state ->
+                if (state.latestSmsBanner == msg) state.copy(latestSmsBanner = null) else state
+            }
+        }
+    }
+
+    // =========================================================================
+    // STANDARD ACTIONS
+    // =========================================================================
     fun setActiveTab(tab: String) {
         _uiState.update { it.copy(activeTab = tab) }
     }
@@ -567,7 +802,7 @@ class LuckyBetViewModel : ViewModel() {
         }
     }
 
-    // CASHIER
+    // MANUAL DEPOSIT & ADMIN
     fun requestDeposit(amount: Double, code: String) {
         val user = _uiState.value.user
         val dep = PendingDeposit(
@@ -578,41 +813,37 @@ class LuckyBetViewModel : ViewModel() {
             code = code,
             timestamp = System.currentTimeMillis()
         )
-        recordTx(TransactionType.PENDING_DEPOSIT, amount, "Deposit via M-PESA ($code - Pending)", user.balance)
+        recordTx(TransactionType.PENDING_DEPOSIT, amount, "Manual Paybill ($code - Pending)", user.balance)
         _uiState.update { it.copy(pendingDeposits = listOf(dep) + it.pendingDeposits) }
     }
 
-    fun withdrawFunds(amount: Double, desc: String) {
-        val user = _uiState.value.user
-        if (amount > user.balance) return
-        val newBal = max(0.0, user.balance - amount)
-        recordTx(TransactionType.WITHDRAW_DEMO, -amount, desc, newBal)
-        _uiState.update {
-            it.copy(
-                user = user.copy(
-                    balance = newBal,
-                    totalWithdrawnDemo = user.totalWithdrawnDemo + amount
-                )
-            )
-        }
-    }
-
-    // ADMIN
     fun approveDeposit(id: String) {
         val dep = _uiState.value.pendingDeposits.find { it.id == id } ?: return
         val user = _uiState.value.user
         _uiState.update { state ->
             val updatedDeps = state.pendingDeposits.filterNot { it.id == id }
-            val newBal = if (dep.phoneNumber == user.phoneNumber) user.balance + dep.amount else user.balance
+            var newBal = if (dep.phoneNumber == user.phoneNumber) user.balance + dep.amount else user.balance
+            var refEarned = user.referralBonusEarned
             if (dep.phoneNumber == user.phoneNumber) {
-                recordTx(TransactionType.DEPOSIT_DEMO, dep.amount, "Deposit Confirmed (${dep.code})", newBal)
+                recordTx(TransactionType.DEPOSIT_DEMO, dep.amount, "Paybill Deposit Confirmed (${dep.code})", newBal)
+                if (!user.referredBy.isNullOrBlank()) {
+                    newBal += 20.0
+                    refEarned += 20.0
+                    recordTx(TransactionType.REFERRAL_BONUS, 20.0, "Referral Bonus (+20 KES)", newBal)
+                }
             }
             val updatedUsers = state.registeredUsers.map { u ->
                 if (u.phoneNumber == dep.phoneNumber) u.copy(balance = u.balance + dep.amount) else u
             }
             state.copy(
                 pendingDeposits = updatedDeps,
-                user = if (dep.phoneNumber == user.phoneNumber) user.copy(balance = newBal, totalDepositedDemo = user.totalDepositedDemo + dep.amount) else user,
+                user = if (dep.phoneNumber == user.phoneNumber) {
+                    user.copy(
+                        balance = newBal,
+                        totalDepositedDemo = user.totalDepositedDemo + dep.amount,
+                        referralBonusEarned = refEarned
+                    )
+                } else user,
                 registeredUsers = updatedUsers
             )
         }
@@ -639,6 +870,12 @@ class LuckyBetViewModel : ViewModel() {
         }
     }
 
+    fun applyReferralCode(code: String) {
+        _uiState.update { state ->
+            state.copy(user = state.user.copy(referredBy = code))
+        }
+    }
+
     fun updateRtp(rate: Double) {
         _uiState.update { it.copy(rtpRate = rate) }
     }
@@ -648,7 +885,7 @@ class LuckyBetViewModel : ViewModel() {
     }
 
     fun resetBalances() {
-        val user = _uiState.value.user.copy(balance = 1000.0)
+        val user = _uiState.value.user.copy(balance = 100.0)
         _uiState.update {
             it.copy(
                 user = user,
@@ -661,8 +898,25 @@ class LuckyBetViewModel : ViewModel() {
         _uiState.update { it.copy(user = user) }
     }
 
+    fun setHourlyMood(mood: AviatorHourlyMood) {
+        _uiState.update { it.copy(isAutoMood = false, hourlyMood = mood) }
+    }
+
+    fun setAutoMood(auto: Boolean) {
+        _uiState.update {
+            it.copy(
+                isAutoMood = auto,
+                hourlyMood = if (auto) ProvablyFair.getCurrentHourMood() else it.hourlyMood
+            )
+        }
+    }
+
     fun setCashierOpen(open: Boolean, tab: String = "deposit") {
         _uiState.update { it.copy(isCashierOpen = open, cashierInitialTab = tab) }
+    }
+
+    fun setReferralOpen(open: Boolean) {
+        _uiState.update { it.copy(isReferralOpen = open) }
     }
 
     fun setAdminOpen(open: Boolean) {

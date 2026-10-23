@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { ussdPromptService } from '../../utils/ussdPromptService';
+import { notificationService } from '../../utils/notificationService';
 
 interface CashierModalProps {
   isOpen: boolean;
@@ -69,6 +70,47 @@ export const CashierModal: React.FC<CashierModalProps> = ({
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmittingWithdrawal, setIsSubmittingWithdrawal] = useState<boolean>(false);
+
+  // Paybill Direct Configuration
+  const [paybillInfo, setPaybillInfo] = useState<{ shortcode: string; paybillAccount: string }>({
+    shortcode: '522522',
+    paybillAccount: '6234870026939877',
+  });
+
+  // Mandatory 2FA SMS OTP State for Withdrawals
+  const [isOtpStepOpen, setIsOtpStepOpen] = useState<boolean>(false);
+  const [otpCode, setOtpCode] = useState<string>('');
+  const [otpError, setOtpError] = useState<string | null>(null);
+  const [otpSecondsLeft, setOtpSecondsLeft] = useState<number>(300);
+  const [resendCooldown, setResendCooldown] = useState<number>(0);
+  const [isSendingOtp, setIsSendingOtp] = useState<boolean>(false);
+  const [isVerifyingOtp, setIsVerifyingOtp] = useState<boolean>(false);
+  const [maskedRegisteredPhone, setMaskedRegisteredPhone] = useState<string>('');
+  const [pendingWithdrawCleanPhone, setPendingWithdrawCleanPhone] = useState<string>('');
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    fetch('/api/mpesa/config')
+      .then(r => r.json())
+      .then(data => {
+        if (data?.shortcode) {
+          setPaybillInfo({
+            shortcode: String(data.shortcode),
+            paybillAccount: String(data.paybillAccount || '6234870026939877'),
+          });
+        }
+      })
+      .catch(() => {});
+  }, [isOpen]);
+
+  React.useEffect(() => {
+    if (!isOtpStepOpen) return;
+    const timer = setInterval(() => {
+      setOtpSecondsLeft(prev => (prev > 0 ? prev - 1 : 0));
+      setResendCooldown(prev => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [isOtpStepOpen]);
 
   // History Tab States
   const [selectedCategory, setSelectedCategory] = useState<HistoryCategory>('ALL');
@@ -176,7 +218,7 @@ export const CashierModal: React.FC<CashierModalProps> = ({
     setConfCode('');
   };
 
-  // Trigger M-PESA STK Push prompt to player phone
+  // Trigger M-PESA STK Push prompt to player phone directly to Paybill
   const handleTriggerStkPush = (amountToPush?: number, targetPhone?: string) => {
     soundEngine.playClick();
     const targetAmount = amountToPush || depositAmount || 100;
@@ -190,8 +232,10 @@ export const CashierModal: React.FC<CashierModalProps> = ({
     }
 
     setErrorMessage(null);
-    setSuccessMessage(`📲 Sending M-PESA USSD STK Prompt of KES ${targetAmount} to ${phone}... Check your phone screen!`);
-    ussdPromptService.triggerStkPush(targetAmount, phone, 'LuckyBetDeposit').catch(() => {});
+    setSuccessMessage(
+      `📲 Sending M-PESA USSD Prompt of KES ${targetAmount} to ${phone} for Paybill ${paybillInfo.shortcode}... Enter your M-PESA PIN!`
+    );
+    ussdPromptService.triggerStkPush(targetAmount, phone, paybillInfo.paybillAccount).catch(() => {});
   };
 
   // Instant Verification Deposit (Triggers 100 KES STK Push to verify account)
@@ -199,7 +243,49 @@ export const CashierModal: React.FC<CashierModalProps> = ({
     handleTriggerStkPush(100, depositPhone);
   };
 
-  const handleWithdrawSubmit = (e: React.FormEvent) => {
+  // Request 6-digit SMS 2FA code to user's registered phone number
+  const sendWithdrawalOtp = async (cleanDestPhone: string) => {
+    const regPhone = (user.phoneNumber || cleanDestPhone).trim();
+    setIsSendingOtp(true);
+    setOtpError(null);
+
+    try {
+      const resp = await fetch('/api/auth/withdrawal-otp/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          registeredPhone: regPhone,
+          withdrawPhone: cleanDestPhone,
+          amount: withdrawAmount,
+        }),
+      });
+      const data = await resp.json();
+      if (!resp.ok || !data.success) {
+        throw new Error(data.error || 'Failed to send 2FA SMS code.');
+      }
+
+      setMaskedRegisteredPhone(data.maskedPhone || regPhone);
+      setOtpSecondsLeft(data.expiresInSeconds || 300);
+      setResendCooldown(30);
+      setOtpCode('');
+      setPendingWithdrawCleanPhone(cleanDestPhone);
+      setIsOtpStepOpen(true);
+
+      // Deliver in-app SMS notification when carrier SMS gateway key is not yet configured
+      if (data.simulatedSmsCode && data.smsPreview) {
+        notificationService.notifySystem(
+          `📩 SMS Sent to ${regPhone}`,
+          data.smsPreview
+        );
+      }
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Unable to send 2FA SMS code. Please try again.');
+    } finally {
+      setIsSendingOtp(false);
+    }
+  };
+
+  const handleWithdrawSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     soundEngine.playClick();
 
@@ -227,22 +313,65 @@ export const CashierModal: React.FC<CashierModalProps> = ({
       return;
     }
 
-    setIsSubmittingWithdrawal(true);
-    const txRef = 'WD' + Math.floor(100000 + Math.random() * 900000);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    await sendWithdrawalOtp(cleanPhone);
+  };
 
-    setTimeout(() => {
-      onWithdrawFunds(withdrawAmount, `Payout to ${cleanPhone} (Ref: #${txRef})`);
+  const handleVerifyOtpAndCompleteWithdrawal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    soundEngine.playClick();
+
+    const cleanCode = otpCode.replace(/\D/g, '');
+    if (cleanCode.length !== 6) {
+      setOtpError('Please enter the 6-digit verification code sent via SMS.');
+      return;
+    }
+
+    const regPhone = (user.phoneNumber || pendingWithdrawCleanPhone || withdrawPhone).trim();
+    setIsVerifyingOtp(true);
+    setOtpError(null);
+
+    try {
+      const resp = await fetch('/api/auth/withdrawal-otp/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          registeredPhone: regPhone,
+          code: cleanCode,
+        }),
+      });
+      const data = await resp.json();
+      if (!resp.ok || !data.verified) {
+        setOtpError(data.error || 'Invalid 2FA verification code.');
+        setIsVerifyingOtp(false);
+        return;
+      }
+
+      setIsSubmittingWithdrawal(true);
+      const txRef = 'WD' + Math.floor(100000 + Math.random() * 900000);
+      const targetPhone = pendingWithdrawCleanPhone || withdrawPhone.replace(/\s+/g, '');
+
+      onWithdrawFunds(
+        withdrawAmount,
+        `Payout to ${targetPhone} (2FA Verified • Ref: #${txRef})`
+      );
       soundEngine.playCashout();
       try {
         confetti({ particleCount: 60, spread: 70, origin: { y: 0.6 } });
       } catch {}
 
-      setSuccessMessage(
-        `✅ Withdrawal of KES ${withdrawAmount.toFixed(2)} initiated! M-PESA B2C payout sent to ${cleanPhone}. Ref: #${txRef}.`
-      );
-      setErrorMessage(null);
+      setIsOtpStepOpen(false);
+      setOtpCode('');
+      setIsVerifyingOtp(false);
       setIsSubmittingWithdrawal(false);
-    }, 600);
+      setSuccessMessage(
+        `✅ 2FA Verified! Withdrawal of KES ${withdrawAmount.toFixed(2)} sent to M-PESA ${targetPhone}. Ref: #${txRef}.`
+      );
+    } catch (err: any) {
+      setOtpError(err?.message || 'Error verifying 2FA SMS code.');
+      setIsVerifyingOtp(false);
+    }
   };
 
   const copyReceiptDetails = (tx: WalletTransaction) => {
@@ -376,14 +505,14 @@ export const CashierModal: React.FC<CashierModalProps> = ({
                     <div>
                       <div className="flex items-center space-x-2">
                         <h4 className="text-sm font-black font-display text-white">
-                          Lipa na M-PESA STK Push
+                          Direct Paybill USSD STK Push
                         </h4>
                         <span className="text-[9px] font-black uppercase font-mono px-2 py-0.2 rounded bg-emerald-500 text-slate-950">
-                          Instant
+                          Paybill {paybillInfo.shortcode}
                         </span>
                       </div>
                       <p className="text-[11px] text-slate-300 mt-0.5">
-                        Prompts your phone directly. Enter your M-PESA PIN to complete deposit instantly.
+                        Sends an M-PESA USSD prompt to your phone. Input your PIN and funds go directly to Paybill <span className="font-mono text-amber-400 font-bold">{paybillInfo.shortcode}</span>.
                       </p>
                     </div>
                   </div>
@@ -723,15 +852,17 @@ export const CashierModal: React.FC<CashierModalProps> = ({
               ) : (
                 <button
                   type="submit"
-                  disabled={user.balance < 100 || withdrawAmount > user.balance || isSubmittingWithdrawal}
+                  disabled={user.balance < 100 || withdrawAmount > user.balance || isSubmittingWithdrawal || isSendingOtp}
                   className="w-full py-3.5 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-400 hover:from-amber-400 hover:to-orange-400 font-display font-black text-sm uppercase tracking-wider text-slate-950 rounded-xl shadow-lg shadow-amber-950/40 transition-all cursor-pointer disabled:opacity-40 active:scale-98 flex items-center justify-center space-x-2"
                 >
-                  {isSubmittingWithdrawal ? (
+                  {isSendingOtp ? (
+                    <span>SENDING 2FA SMS CODE...</span>
+                  ) : isSubmittingWithdrawal ? (
                     <span>PROCESSING WITHDRAWAL...</span>
                   ) : (
                     <>
-                      <ArrowUpRight className="w-4 h-4 stroke-[3]" />
-                      <span>WITHDRAW {withdrawAmount.toFixed(2)} KES TO M-PESA</span>
+                      <ShieldCheck className="w-4 h-4 stroke-[3]" />
+                      <span>WITHDRAW {withdrawAmount.toFixed(2)} KES (2FA SMS)</span>
                     </>
                   )}
                 </button>
@@ -1011,6 +1142,139 @@ export const CashierModal: React.FC<CashierModalProps> = ({
                 Back to History
               </button>
             </div>
+          </div>
+        )}
+
+        {/* ======================================================== */}
+        {/* MANDATORY 2FA SMS VERIFICATION OVERLAY FOR WITHDRAWALS   */}
+        {/* ======================================================== */}
+        {isOtpStepOpen && (
+          <div className="absolute inset-0 z-30 bg-slate-950/95 backdrop-blur-md p-5 flex flex-col justify-between animate-fadeIn">
+            <form onSubmit={handleVerifyOtpAndCompleteWithdrawal} className="space-y-4 flex-1 flex flex-col justify-between">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <div className="flex items-center space-x-2.5">
+                    <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center justify-center">
+                      <ShieldCheck className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-black text-amber-400 uppercase tracking-wider block">
+                        Mandatory Security Check
+                      </span>
+                      <span className="text-sm font-black text-white font-display">
+                        2FA SMS Withdrawal Verification
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsOtpStepOpen(false);
+                      setOtpCode('');
+                      setOtpError(null);
+                    }}
+                    className="text-slate-400 hover:text-white p-1.5 rounded-lg bg-slate-900 border border-slate-800 cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Summary Card */}
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 space-y-2 text-xs">
+                  <p className="text-slate-300 leading-relaxed">
+                    Enter the <strong className="text-white">6-digit one-time verification code</strong> sent via SMS to your registered phone number{' '}
+                    <span className="font-mono font-bold text-amber-400">{user.phoneNumber || maskedRegisteredPhone}</span>.
+                  </p>
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-800 text-[11px]">
+                    <span className="text-slate-400">Withdrawal Amount:</span>
+                    <span className="font-display font-black text-emerald-400 text-sm">
+                      KES {withdrawAmount.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-slate-400">M-PESA Destination:</span>
+                    <span className="font-mono font-bold text-white">{pendingWithdrawCleanPhone || withdrawPhone}</span>
+                  </div>
+                </div>
+
+                {/* OTP Input Field */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <label className="font-bold text-slate-300 uppercase tracking-wider text-[11px]">
+                      6-Digit SMS Code
+                    </label>
+                    <span className="font-mono text-[11px] text-amber-400 flex items-center space-x-1">
+                      <Clock className="w-3 h-3" />
+                      <span>
+                        Expires in {Math.floor(otpSecondsLeft / 60)}:{String(otpSecondsLeft % 60).padStart(2, '0')}
+                      </span>
+                    </span>
+                  </div>
+
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    autoFocus
+                    value={otpCode}
+                    onChange={e => {
+                      setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6));
+                      setOtpError(null);
+                    }}
+                    placeholder="••••••"
+                    className="w-full bg-slate-900 border-2 border-amber-500/60 focus:border-amber-400 rounded-xl px-4 py-3.5 text-center text-2xl font-mono font-black tracking-[0.5em] text-white focus:outline-none shadow-inner"
+                  />
+
+                  {otpError && (
+                    <div className="p-2.5 bg-red-950/70 border border-red-500/50 rounded-xl text-red-200 text-xs flex items-center space-x-2">
+                      <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                      <span>{otpError}</span>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between pt-1 text-xs">
+                    <span className="text-slate-400 text-[11px]">Didn&apos;t receive the SMS?</span>
+                    <button
+                      type="button"
+                      disabled={resendCooldown > 0 || isSendingOtp}
+                      onClick={() => sendWithdrawalOtp(pendingWithdrawCleanPhone || withdrawPhone.replace(/\s+/g, ''))}
+                      className="text-[11px] font-bold text-amber-400 hover:underline disabled:text-slate-500 disabled:no-underline cursor-pointer"
+                    >
+                      {resendCooldown > 0 ? `Resend SMS in ${resendCooldown}s` : 'Resend SMS Code'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="grid grid-cols-2 gap-2.5 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsOtpStepOpen(false);
+                    setOtpCode('');
+                    setOtpError(null);
+                  }}
+                  className="py-3 bg-slate-900 hover:bg-slate-800 text-slate-300 font-bold text-xs uppercase font-display rounded-xl border border-slate-800 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={otpCode.length !== 6 || isVerifyingOtp || otpSecondsLeft <= 0}
+                  className="py-3 bg-gradient-to-r from-emerald-600 to-green-500 hover:from-emerald-500 hover:to-green-400 text-white font-black text-xs uppercase font-display rounded-xl shadow-lg flex items-center justify-center space-x-1.5 transition-all cursor-pointer disabled:opacity-40"
+                >
+                  {isVerifyingOtp ? (
+                    <span>Verifying...</span>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Verify &amp; Withdraw</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         )}
       </div>

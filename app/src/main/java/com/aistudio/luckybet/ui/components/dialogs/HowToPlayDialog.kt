@@ -20,11 +20,13 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -46,6 +48,7 @@ fun HowToPlayDialog(
                 .background(Color(0xFF0F1522))
                 .border(1.dp, Color(0xFF1E293B), RoundedCornerShape(18.dp))
                 .padding(16.dp)
+                .testTag("how_to_play_dialog")
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -61,15 +64,18 @@ fun HowToPlayDialog(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "How to Play Lucky Bet",
+                        text = "How to Play & Security",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Black,
                         color = Color.White
                     )
                 }
 
-                IconButton(onClick = onClose, modifier = Modifier.size(28.dp)) {
-                    Icon(Icons.Default.Close, contentDescription = "Close", tint = Color(0xFF94A3B8))
+                IconButton(
+                    onClick = onClose,
+                    modifier = Modifier.minimumInteractiveComponentSize()
+                ) {
+                    Icon(Icons.Default.Close, contentDescription = "Close rules", tint = Color(0xFF94A3B8))
                 }
             }
 
@@ -83,16 +89,15 @@ fun HowToPlayDialog(
                     .padding(10.dp)
             ) {
                 Text(
-                    text = "✈️ Aviator Crash Rules",
+                    text = "Aviator & Live Football",
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
                     color = AccentAmber
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "1. Place your bet before takeoff during the 5-second countdown.\n" +
-                            "2. Watch the multiplier climb as the stunt plane ascends.\n" +
-                            "3. Tap CASH OUT before the plane flies away to bank your win! If the plane flies away before cash out, the bet is lost.",
+                    text = "1. Place bets before takeoff in Aviator and cash out before the plane flies away.\n" +
+                        "2. Combine live & upcoming football odds for Multi-Bet boosts up to +25%.",
                     fontSize = 11.sp,
                     color = Color(0xFFCBD5E1),
                     lineHeight = 16.sp
@@ -109,40 +114,16 @@ fun HowToPlayDialog(
                     .padding(10.dp)
             ) {
                 Text(
-                    text = "⚽ Sports Multi-Betting",
+                    text = "Direct Paybill USSD & 2FA Withdrawals",
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
                     color = AccentAmber
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "1. Browse live in-play and upcoming football fixtures.\n" +
-                            "2. Pick match outcomes (1X2, Over/Under 2.5, GG/NG).\n" +
-                            "3. Combine multiple selections to earn Accumulator Multi-Boosts up to +25% extra on your payout!",
-                    fontSize = 11.sp,
-                    color = Color(0xFFCBD5E1),
-                    lineHeight = 16.sp
-                )
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(Color(0xFF070A0F))
-                    .padding(10.dp)
-            ) {
-                Text(
-                    text = "💼 Free Virtual Demo Wallet",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = AccentAmber
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "All accounts start with 500 KES free welcome bonus. You can simulate instant deposits and practice M-PESA withdrawals at any time.",
+                    text = "• Deposits trigger a direct M-PESA USSD PIN prompt on your phone and settle straight into our Paybill.\n" +
+                        "• All withdrawals require a mandatory 6-digit SMS 2FA code sent to your registered phone number.\n" +
+                        "• New players receive a 100 KES Welcome Bonus, plus 20 KES per referred friend deposit!",
                     fontSize = 11.sp,
                     color = Color(0xFFCBD5E1),
                     lineHeight = 16.sp
@@ -155,7 +136,10 @@ fun HowToPlayDialog(
                 onClick = onClose,
                 colors = ButtonDefaults.buttonColors(containerColor = AccentAmber),
                 shape = RoundedCornerShape(10.dp),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .testTag("got_it_rules_button")
             ) {
                 Text(
                     text = "GOT IT, LET'S PLAY",

@@ -477,25 +477,176 @@ export function setupApiRoutes(app) {
     res.json({ success: true, deposit: result });
   });
 
-  // 13. M-PESA USSD STK Push Trigger Endpoint (Supports Live Safaricom Daraja API)
+  // In-memory store for one-time 2FA withdrawal SMS codes (keyed by normalized phone)
+  const withdrawalOtps = new Map();
+
+  function normalizeKenyanPhone(raw) {
+    let digits = String(raw || '').replace(/\D/g, '');
+    if (digits.startsWith('0') && digits.length === 10) {
+      digits = '254' + digits.slice(1);
+    } else if ((digits.startsWith('7') || digits.startsWith('1')) && digits.length === 9) {
+      digits = '254' + digits;
+    }
+    return digits;
+  }
+
+  function maskPhone(raw) {
+    const clean = String(raw || '').trim();
+    if (clean.length < 6) return clean;
+    return clean.slice(0, 4) + '***' + clean.slice(-3);
+  }
+
+  // 13. Public Paybill Config (non-secret shortcode & account reference)
+  app.get('/api/mpesa/config', (req, res) => {
+    const shortcode = process.env.MPESA_SHORTCODE || '522522';
+    const paybillAccount = process.env.MPESA_PAYBILL_ACCOUNT || '6234870026939877';
+    res.json({
+      shortcode,
+      paybillAccount,
+    });
+  });
+
+  // 14. Mandatory 2FA Withdrawal SMS OTP - Send One-Time Code to Registered Phone
+  app.post('/api/auth/withdrawal-otp/send', async (req, res) => {
+    const { registeredPhone, withdrawPhone, amount } = req.body || {};
+    const targetPhone = (registeredPhone || withdrawPhone || '').trim();
+    const intlPhone = normalizeKenyanPhone(targetPhone);
+
+    if (!intlPhone || intlPhone.length < 11) {
+      return res.status(400).json({
+        error: 'Valid registered phone number is required to send 2FA SMS code.',
+      });
+    }
+
+    const otpCode = String(Math.floor(100000 + Math.random() * 900000));
+    const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes validity
+
+    withdrawalOtps.set(intlPhone, {
+      code: otpCode,
+      expiresAt,
+      amount: Number(amount) || 0,
+      withdrawPhone: withdrawPhone || targetPhone,
+      attempts: 0,
+    });
+
+    const smsText = `LUCKY BET 2FA: Your one-time withdrawal verification code for KES ${Number(amount || 0).toFixed(2)} is ${otpCode}. Valid for 5 minutes. Never share this code.`;
+
+    const smsApiKey = process.env.SMS_API_KEY || '';
+    const smsUsername = process.env.SMS_USERNAME || 'sandbox';
+    const smsSenderId = process.env.SMS_SENDER_ID || '';
+    const isSmsConfigured =
+      smsApiKey &&
+      !smsApiKey.startsWith('SMS_API_KEY_') &&
+      !smsApiKey.startsWith('YOUR_') &&
+      smsApiKey !== 'null';
+
+    let liveSmsDispatched = false;
+    if (isSmsConfigured) {
+      try {
+        const smsEndpoint =
+          smsUsername.toLowerCase() === 'sandbox'
+            ? 'https://api.sandbox.africastalking.com/version1/messaging'
+            : 'https://api.africastalking.com/version1/messaging';
+
+        const formBody = new URLSearchParams();
+        formBody.append('username', smsUsername);
+        formBody.append('to', `+${intlPhone}`);
+        formBody.append('message', smsText);
+        if (smsSenderId && smsSenderId !== 'LUCKYBET') {
+          formBody.append('from', smsSenderId);
+        }
+
+        const smsResp = await fetch(smsEndpoint, {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/x-www-form-urlencoded',
+            apiKey: smsApiKey,
+          },
+          body: formBody.toString(),
+        });
+
+        if (smsResp.ok) {
+          liveSmsDispatched = true;
+          console.log(`[2FA SMS LIVE] Sent withdrawal OTP to +${intlPhone}`);
+        }
+      } catch (err) {
+        console.warn('[2FA SMS] Carrier SMS fallback to in-app SMS notification:', err.message);
+      }
+    }
+
+    console.log(`[2FA WITHDRAWAL OTP] Sent code ${otpCode} to registered phone +${intlPhone} for KES ${amount}`);
+
+    res.json({
+      success: true,
+      liveSmsDispatched,
+      registeredPhone: targetPhone,
+      maskedPhone: maskPhone(targetPhone),
+      expiresInSeconds: 300,
+      // Provided when carrier SMS gateway key is not yet configured so user receives in-app SMS banner
+      simulatedSmsCode: liveSmsDispatched ? undefined : otpCode,
+      smsPreview: liveSmsDispatched ? undefined : smsText,
+    });
+  });
+
+  // 15. Mandatory 2FA Withdrawal SMS OTP - Verify One-Time Code Before Payout
+  app.post('/api/auth/withdrawal-otp/verify', (req, res) => {
+    const { registeredPhone, code } = req.body || {};
+    const intlPhone = normalizeKenyanPhone(registeredPhone);
+    const cleanCode = String(code || '').replace(/\D/g, '');
+
+    if (!intlPhone || cleanCode.length !== 6) {
+      return res.status(400).json({ error: 'Please enter the 6-digit SMS verification code.' });
+    }
+
+    const record = withdrawalOtps.get(intlPhone);
+    if (!record) {
+      return res.status(400).json({ error: 'No active verification code found. Please request a new SMS code.' });
+    }
+
+    if (Date.now() > record.expiresAt) {
+      withdrawalOtps.delete(intlPhone);
+      return res.status(400).json({ error: 'Verification code has expired. Please tap Resend SMS Code.' });
+    }
+
+    record.attempts += 1;
+    if (record.attempts > 5) {
+      withdrawalOtps.delete(intlPhone);
+      return res.status(429).json({ error: 'Too many incorrect attempts. Please request a new SMS code.' });
+    }
+
+    if (record.code !== cleanCode) {
+      return res.status(400).json({
+        error: `Incorrect verification code. ${Math.max(0, 5 - record.attempts)} attempts remaining.`,
+      });
+    }
+
+    // Consume one-time code immediately so it cannot be reused
+    withdrawalOtps.delete(intlPhone);
+    const verificationReceipt = '2FA-' + Date.now().toString(36).toUpperCase();
+
+    console.log(`[2FA VERIFIED] Withdrawal authorized for +${intlPhone} (Ref: ${verificationReceipt})`);
+    res.json({
+      success: true,
+      verified: true,
+      verificationReceipt,
+    });
+  });
+
+  // 16. M-PESA USSD STK Push Trigger Endpoint (Routes Funds Directly to Paybill)
   app.post('/api/mpesa/stkpush', async (req, res) => {
     const { phoneNumber, amount, accountReference } = req.body;
     if (!phoneNumber || !amount) {
       return res.status(400).json({ error: 'Missing phoneNumber or amount' });
     }
 
-    // Format phone to 254...
-    let cleanPhone = String(phoneNumber).replace(/\D/g, '');
-    if (cleanPhone.startsWith('0') && cleanPhone.length === 10) {
-      cleanPhone = '254' + cleanPhone.slice(1);
-    } else if (cleanPhone.length === 9) {
-      cleanPhone = '254' + cleanPhone;
-    }
+    const cleanPhone = normalizeKenyanPhone(phoneNumber);
 
     const consumerKey = process.env.MPESA_CONSUMER_KEY || '';
     const consumerSecret = process.env.MPESA_CONSUMER_SECRET || '';
     const passkey = process.env.MPESA_PASSKEY || '';
-    const shortcode = process.env.MPESA_SHORTCODE || '174379';
+    const shortcode = process.env.MPESA_SHORTCODE || '522522';
+    const paybillAccount = process.env.MPESA_PAYBILL_ACCOUNT || accountReference || '6234870026939877';
     const callbackUrl = process.env.MPESA_CALLBACK_URL || 'https://example.com/api/mpesa/callback';
     const mpesaEnv = (process.env.MPESA_ENV || 'sandbox').toLowerCase();
 
@@ -503,8 +654,11 @@ export function setupApiRoutes(app) {
       consumerKey &&
       consumerSecret &&
       passkey &&
+      !consumerKey.startsWith('MPESA_CONSUMER_KEY_') &&
       !consumerKey.startsWith('YOUR_') &&
+      !consumerSecret.startsWith('MPESA_CONSUMER_SECRET_') &&
       !consumerSecret.startsWith('YOUR_') &&
+      !passkey.startsWith('MPESA_PASSKEY_') &&
       !passkey.startsWith('YOUR_');
 
     if (isDarajaConfigured) {
@@ -545,17 +699,19 @@ export function setupApiRoutes(app) {
               PartyB: shortcode,
               PhoneNumber: cleanPhone,
               CallBackURL: callbackUrl,
-              AccountReference: accountReference || 'LuckyBet',
-              TransactionDesc: 'Lucky Bet Wallet Deposit',
+              AccountReference: paybillAccount,
+              TransactionDesc: `Deposit to Paybill ${shortcode}`,
             }),
           });
 
           const stkJson = await stkResp.json();
           if (stkResp.ok && stkJson.ResponseCode === '0') {
-            console.log(`[M-PESA DARAJA LIVE] Carrier STK Push dispatched to ${cleanPhone} for KES ${amount}`);
+            console.log(`[M-PESA DARAJA LIVE] Carrier STK Push dispatched to ${cleanPhone} -> Paybill ${shortcode} (Acc: ${paybillAccount}) for KES ${amount}`);
             return res.json({
               success: true,
               liveDaraja: true,
+              shortcode,
+              paybillAccount,
               ...stkJson,
               phoneNumber: cleanPhone,
               amount,
@@ -570,19 +726,42 @@ export function setupApiRoutes(app) {
     const checkoutRequestId = 'ws_CO_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
     const merchantRequestId = '29115-' + Date.now();
 
-    console.log(`[M-PESA STK PUSH] Sending USSD STK Prompt to phone: ${cleanPhone} for KES ${amount} (Ref: ${accountReference || 'LuckyBet'})`);
+    console.log(`[M-PESA STK PUSH] Sending USSD STK Prompt to ${cleanPhone} -> Paybill ${shortcode} (Acc: ${paybillAccount}) for KES ${amount}`);
 
     res.json({
       success: true,
       liveDaraja: false,
+      shortcode,
+      paybillAccount,
       ResponseCode: '0',
       ResponseDescription: 'Success. Request accepted for processing',
       MerchantRequestID: merchantRequestId,
       CheckoutRequestID: checkoutRequestId,
-      CustomerMessage: `Success. Prompt sent to ${cleanPhone}. Please enter your M-PESA PIN to complete the transaction.`,
+      CustomerMessage: `Success. USSD Prompt sent to ${cleanPhone} for Paybill ${shortcode}. Enter your M-PESA PIN to complete payment.`,
       phoneNumber: cleanPhone,
       amount,
     });
+  });
+
+  // 17. Safaricom Daraja Callback Webhook Receiver
+  app.post('/api/mpesa/callback', (req, res) => {
+    try {
+      const stkCallback = req.body?.Body?.stkCallback;
+      if (stkCallback && stkCallback.ResultCode === 0) {
+        const items = stkCallback.CallbackMetadata?.Item || [];
+        const amountItem = items.find(i => i.Name === 'Amount');
+        const receiptItem = items.find(i => i.Name === 'MpesaReceiptNumber');
+        const phoneItem = items.find(i => i.Name === 'PhoneNumber');
+        if (amountItem && phoneItem) {
+          const localPhone = '0' + String(phoneItem.Value).slice(-9);
+          realtimeStore.addFunds(localPhone, Number(amountItem.Value));
+          console.log(`[M-PESA CALLBACK] Verified payment ${receiptItem?.Value} of KES ${amountItem.Value} from ${localPhone}`);
+        }
+      }
+    } catch (e) {
+      console.error('Callback parse error:', e);
+    }
+    res.json({ ResultCode: 0, ResultDesc: 'Accepted' });
   });
 }
 

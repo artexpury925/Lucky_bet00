@@ -151,12 +151,25 @@ data class StkPushPromptState(
     val internationalPhone: String,
     val amount: Double,
     val paybill: String = "522522",
-    val accountReference: String = "LuckyBet",
+    val accountReference: String = "6234870026939877",
     val secondsRemaining: Int = 45,
     val status: StkPromptStatus = StkPromptStatus.PENDING_PIN,
     val liveDarajaSent: Boolean = false,
-    val darajaStatusNote: String = "Safaricom USSD Prompt Active",
+    val darajaStatusNote: String = "Direct Paybill USSD Prompt Active",
     val txRef: String? = null
+)
+
+data class WithdrawalOtpChallenge(
+    val challengeId: String,
+    val registeredPhone: String,
+    val destinationPhone: String,
+    val amount: Double,
+    val expectedCode: String,
+    val secondsRemaining: Int = 300,
+    val resendCooldown: Int = 30,
+    val attemptsRemaining: Int = 5,
+    val liveSmsDispatched: Boolean = false,
+    val errorMessage: String? = null
 )
 
 data class UserAccount(

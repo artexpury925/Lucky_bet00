@@ -133,14 +133,13 @@ export const StkPushModal: React.FC<StkPushModalProps> = ({ onSuccess }) => {
                   <span className="text-amber-400 font-bold">{request.phoneNumber}</span>
                 </div>
                 <p className="font-semibold">
-                  Do you want to pay <strong className="text-emerald-400 text-sm font-black">KES {request.amount.toFixed(2)}</strong> to{' '}
-                  <strong className="text-white">LUCKY BET KENYA</strong> (Paybill:{' '}
-                  <span className="font-mono text-amber-400 font-bold">522522</span>, Account:{' '}
-                  <span className="font-mono text-emerald-300 font-bold">{request.phoneNumber}</span>)?
+                  Enter M-PESA PIN to send <strong className="text-emerald-400 text-sm font-black">KES {request.amount.toFixed(2)}</strong> directly to{' '}
+                  <strong className="text-white">Paybill {request.paybill}</strong> (Account:{' '}
+                  <span className="font-mono text-amber-400 font-bold">{request.accountReference}</span>)?
                 </p>
                 <div className="flex items-center space-x-1.5 text-[10px] text-emerald-400/90 font-mono mt-2 pt-2 border-t border-slate-800">
                   <ShieldCheck className="w-3.5 h-3.5" />
-                  <span>Verified 256-Bit Encrypted Mobile Transaction</span>
+                  <span>Direct Lipa na M-PESA Paybill Settlement</span>
                 </div>
               </div>
 

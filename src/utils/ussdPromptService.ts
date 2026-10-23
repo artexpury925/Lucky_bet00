@@ -70,7 +70,7 @@ class UssdPromptService {
         formattedPhone: international,
         amount: Math.round(amount),
         paybill: '522522',
-        accountReference,
+        accountReference: accountReference || '6234870026939877',
         timestamp: Date.now(),
         timeoutSeconds: 45,
         status: 'PENDING',
@@ -82,7 +82,7 @@ class UssdPromptService {
       };
       this.successCallbacks.push(onComplete);
 
-      // Trigger background network STK Push API call to server
+      // Trigger live network STK Push API call to server (routes funds directly to Paybill)
       try {
         fetch('/api/mpesa/stkpush', {
           method: 'POST',
@@ -90,9 +90,18 @@ class UssdPromptService {
           body: JSON.stringify({
             phoneNumber: international,
             amount: Math.round(amount),
-            accountReference,
+            accountReference: accountReference || '6234870026939877',
           }),
-        }).catch(() => {});
+        })
+          .then(r => r.json())
+          .then(data => {
+            if (this.activeRequest && this.activeRequest.id === requestId && data) {
+              if (data.shortcode) this.activeRequest.paybill = String(data.shortcode);
+              if (data.paybillAccount) this.activeRequest.accountReference = String(data.paybillAccount);
+              this.notifyListeners();
+            }
+          })
+          .catch(() => {});
       } catch {}
 
       // Play prompt arrival sound / vibration
@@ -144,7 +153,7 @@ class UssdPromptService {
       clearInterval(this.countdownTimer);
     }
 
-    const { amount, phoneNumber } = this.activeRequest;
+    const { amount, phoneNumber, paybill, accountReference } = this.activeRequest;
     this.activeRequest.status = 'ACCEPTED';
     this.notifyListeners();
 
@@ -157,7 +166,7 @@ class UssdPromptService {
     const dateStr = new Date().toLocaleDateString('en-GB');
     const timeStr = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 
-    const smsMessage = `${txRef} Confirmed. Ksh${amount.toFixed(2)} sent to LUCKY BET KENYA (Paybill 522522) on ${dateStr} at ${timeStr}. New M-PESA balance: Ksh1,240.00. Transaction cost: Ksh0.00.`;
+    const smsMessage = `${txRef} Confirmed. Ksh${amount.toFixed(2)} sent to Paybill ${paybill} for Account ${accountReference} on ${dateStr} at ${timeStr}. Transaction cost: Ksh0.00.`;
 
     const result: StkPushResult = {
       success: true,

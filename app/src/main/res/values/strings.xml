@@ -16,9 +16,13 @@
     <string name="welcome_bonus_locked_hint">Deposit at least 100 KES via M-PESA USSD prompt to unlock cashout of your 100 KES welcome bonus, 20 KES referral bonuses, and winnings.</string>
     <string name="welcome_bonus_unlocked_hint">Account verified! Withdraw your balance, 100 KES welcome bonus, and 20 KES referral rewards freely to M-PESA.</string>
     <string name="stk_push_header">Safaricom SIM Toolkit</string>
-    <string name="stk_push_subtitle">Lipa na M-PESA Online</string>
+    <string name="stk_push_subtitle">Direct Lipa na M-PESA Paybill</string>
     <string name="enter_mpesa_pin">Enter 4-Digit M-PESA PIN</string>
     <string name="send_ussd_prompt">SEND M-PESA USSD PROMPT</string>
+    <string name="withdrawal_2fa_title">2FA SMS Withdrawal Verification</string>
+    <string name="withdrawal_2fa_subtitle">Enter the 6-digit one-time code sent via SMS to your registered phone number before payout is processed.</string>
+    <string name="verify_and_withdraw">VERIFY &amp; COMPLETE WITHDRAWAL</string>
+    <string name="resend_sms_code">Resend SMS Code</string>
     <string name="referral_program_title">Invite Friends, Earn 20 KES</string>
     <string name="referral_program_desc">Share your referral code. Friends receive a 100 KES Welcome Bonus, and you earn an instant 20 KES cash bonus on every deposit they make!</string>
 </resources>
